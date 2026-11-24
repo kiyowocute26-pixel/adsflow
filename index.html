@@ -475,7 +475,15 @@
     import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     var appId = typeof __app_id !== 'undefined' ? __app_id : 'adsflow-team-sync';
-    var hasFirebaseCfg = typeof __firebase_config !== 'undefined' && __firebase_config;
+    var __firebase_config = JSON.stringify({
+      apiKey: "AIzaSyATxFFmjuaQNRgJh8vGDCeKY7heJ2eLMsA",
+      authDomain: "adsflow-ee304.firebaseapp.com",
+      projectId: "adsflow-ee304",
+      storageBucket: "adsflow-ee304.firebasestorage.app",
+      messagingSenderId: "265130408480",
+      appId: "1:265130408480:web:eb46d82007ecb31e689a45"
+    });
+    var hasFirebaseCfg = true;
 
     var cloudBridge = {
       enabled: false,
