@@ -230,13 +230,13 @@
             <thead>
               <tr class="bg-[#8E4A55] text-white text-[11px] sm:text-xs font-extrabold uppercase tracking-wider">
                 <th class="py-3 px-4">Tanggal</th>
-                <th class="py-3 px-3 text-right">Topup USDT ($)</th>
+                <th class="py-3 px-3 text-right">Total ($)</th>
+                <th class="py-3 px-3 text-right">Topup ($)</th>
+                <th class="py-3 px-3 text-right">Fee Agen ($)</th>
                 <th class="py-3 px-3 text-right">Fee TRX ($)</th>
-                <th class="py-3 px-3 text-right">Dong Diterima (₫)</th>
-                <th class="py-3 px-3 text-right">Spend Dong (₫)</th>
                 <th class="py-3 px-3 text-right">Modal Spend (IDR)</th>
                 <th class="py-3 px-3 text-center">Regist | DP | Lock</th>
-                <th class="py-3 px-3 text-right">Nominal DP (IDR)</th>
+                <th class="py-3 px-3 text-right">TTL DP (IDR)</th>
                 <th class="py-3 px-3 text-right">Cost / DP</th>
                 <th class="py-3 px-4 text-center">Aksi</th>
               </tr>
@@ -296,7 +296,7 @@
           </div>
         </div>
 
-        <form id="usdtPurchaseForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        <form id="usdtPurchaseForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
           <div>
             <label for="purchaseDate" class="block text-xs font-bold text-[#7A686A] mb-1">Tanggal Beli</label>
             <input type="date" id="purchaseDate" required class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2.5 text-sm font-bold text-[#3D2C2E] focus:outline-none focus:border-[#B76E79]" />
@@ -310,20 +310,10 @@
             <input type="text" id="purchaseUsdtGross" placeholder="Contoh: 3.000" required class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2.5 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
           </div>
           <div>
-            <div class="flex items-center justify-between mb-1">
-              <label for="purchaseTrxFee" class="text-xs font-bold text-[#7A686A]">Fee TRX ($)</label>
-              <div class="flex items-center gap-1">
-                <button type="button" data-quick-purchase-trx="0" class="px-1.5 py-0.5 rounded bg-[#FAF6F2] border border-[#E8D8D0] text-[10px] font-bold text-[#7A686A] hover:border-[#B76E79]">0</button>
-                <button type="button" data-quick-purchase-trx="1" class="px-1.5 py-0.5 rounded bg-[#F7ECEE] border border-[#E5C9CE] text-[10px] font-bold text-[#8E4A55] hover:bg-[#EFE0E3]">$1</button>
-              </div>
-            </div>
-            <input type="text" id="purchaseTrxFee" value="1" placeholder="1" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2.5 text-sm font-bold text-[#BE123C] tabular-nums focus:outline-none focus:border-[#B76E79]" />
-          </div>
-          <div>
             <label for="purchaseIdrTotal" class="block text-xs font-bold text-[#7A686A] mb-1">Nominal Bayar (IDR)</label>
             <input type="text" id="purchaseIdrTotal" placeholder="Contoh: 55.074.000" required class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2.5 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
           </div>
-          <div class="sm:col-span-2 lg:col-span-5 flex justify-end pt-1">
+          <div class="sm:col-span-2 lg:col-span-4 flex justify-end pt-1">
             <button type="submit" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#B76E79] hover:bg-[#8E4A55] text-white text-sm font-extrabold shadow-xs transition">
               + Simpan Beli USDT
             </button>
@@ -466,23 +456,15 @@
       </div>
 
       <form id="dailyEntryForm" class="p-5 sm:p-6 space-y-5 max-h-[82vh] overflow-y-auto custom-scroll">
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-          <div>
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div class="w-full sm:w-64">
             <label for="modalDaySelect" class="block text-xs font-bold text-[#7A686A] mb-1">Tanggal</label>
             <select id="modalDaySelect" class="w-full rounded-xl border border-[#E8D8D0] bg-[#FAF6F2] px-3 py-2.5 text-sm font-extrabold text-[#3D2C2E] focus:outline-none focus:border-[#B76E79]"></select>
           </div>
-          <div class="sm:col-span-2 flex items-end justify-between gap-2 bg-[#FAF6F2] border border-[#E8D8D0] rounded-xl px-4 py-2.5">
-            <div>
-              <div class="text-[11px] font-bold text-[#7A686A]">Ringkasan Topup Hari Ini</div>
-              <div id="modalTopupSummaryText" class="text-xs sm:text-sm font-extrabold text-[#8E4A55] tabular-nums">
-                Topup: $0 • Fee TRX: $0 • Dong Diterima: 0 ₫
-              </div>
-            </div>
-            <button type="button" id="btnAddAgentCard" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#B76E79] hover:bg-[#8E4A55] text-white text-xs font-extrabold transition shrink-0">
-              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-              <span>Tambah Agen</span>
-            </button>
-          </div>
+          <button type="button" id="btnAddAgentCard" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-[#B76E79] hover:bg-[#8E4A55] text-white text-xs font-extrabold transition shrink-0">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>Tambah Agen</span>
+          </button>
         </div>
 
         <!-- Daftar Kartu Agen Topup -->
@@ -493,15 +475,15 @@
           <div class="text-xs font-extrabold uppercase tracking-wider text-[#8E4A55]">Pemakaian Spend &amp; Konversi Harian</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
-              <label for="modalSpendDong" class="block text-xs font-bold text-[#7A686A] mb-1">Spend Dong (₫)</label>
-              <input type="text" id="modalSpendDong" placeholder="Contoh: 12.500.000" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
+              <label for="modalSpendDong" class="block text-xs font-bold text-[#7A686A] mb-1">Spend Dong (₫) <span class="text-[10px] font-normal">(Bisa 0)</span></label>
+              <input type="text" id="modalSpendDong" placeholder="0" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
             </div>
             <div>
               <label for="modalRegistCount" class="block text-xs font-bold text-[#7A686A] mb-1">Regist (User)</label>
               <input type="text" id="modalRegistCount" placeholder="0" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
             </div>
             <div>
-              <label for="modalDpCount" class="block text-xs font-bold text-[#7A686A] mb-1">Jumlah DP</label>
+              <label for="modalDpCount" class="block text-xs font-bold text-[#7A686A] mb-1">DP</label>
               <input type="text" id="modalDpCount" placeholder="0" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#15803D] tabular-nums focus:outline-none focus:border-[#B76E79]" />
             </div>
             <div>
@@ -509,7 +491,7 @@
               <input type="text" id="modalLockCount" placeholder="0" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#BE123C] tabular-nums focus:outline-none focus:border-[#B76E79]" />
             </div>
             <div>
-              <label for="modalDpAmountIdr" class="block text-xs font-bold text-[#7A686A] mb-1">Nominal DP (IDR)</label>
+              <label for="modalDpAmountIdr" class="block text-xs font-bold text-[#7A686A] mb-1">TTL DP (IDR)</label>
               <input type="text" id="modalDpAmountIdr" placeholder="0" class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
             </div>
           </div>
@@ -659,7 +641,6 @@
     }
 
     function buildInitialSeedState() {
-      const mk = '2026-11';
       return {
         updatedAt: Date.now(),
         selectedYear: 2026,
@@ -677,59 +658,7 @@
           {
             id: 'site_jago',
             name: 'JAGO',
-            months: {
-              [mk]: {
-                usdtCarryOver: { amount: 850, rateIdr: 18280 },
-                dongCarryOver: { amount: 4500000 },
-                purchases: [
-                  { id: 'p1', date: '2026-11-01', source: 'BCA / ADM02 (Batch 1)', grossUsdt: 3000, trxFeeUsdt: 1, idrTotal: 55074000, isStandaloneTrx: false },
-                  { id: 'p2', date: '2026-11-03', source: 'BCA / ADM02 (Batch 2)', grossUsdt: 2000, trxFeeUsdt: 1, idrTotal: 36716000, isStandaloneTrx: false }
-                ],
-                days: {
-                  '2026-11-01': {
-                    agents: [
-                      { name: 'Agen 1', usdtTopup: 500, trxFeeUsdt: 1, feeType: 'percent', feeValue: 5, dongFeeMode: 'deduct', dongRate: 25400 },
-                      { name: 'Agen 2', usdtTopup: 500, trxFeeUsdt: 1, feeType: 'percent', feeValue: 5, dongFeeMode: 'deduct', dongRate: 25400 }
-                    ],
-                    spendDong: 14200000,
-                    registCount: 260,
-                    dpCount: 72,
-                    lockCount: 3,
-                    dpAmountIdr: 24500000
-                  },
-                  '2026-11-02': {
-                    agents: [
-                      { name: 'Agen 1', usdtTopup: 500, trxFeeUsdt: 1, feeType: 'percent', feeValue: 5, dongFeeMode: 'deduct', dongRate: 25400 }
-                    ],
-                    spendDong: 13800000,
-                    registCount: 240,
-                    dpCount: 61,
-                    lockCount: 2,
-                    dpAmountIdr: 21300000
-                  },
-                  '2026-11-03': {
-                    agents: [
-                      { name: 'Agen 1', usdtTopup: 400, trxFeeUsdt: 1, feeType: 'percent', feeValue: 5, dongFeeMode: 'deduct', dongRate: 25400 }
-                    ],
-                    spendDong: 12900000,
-                    registCount: 230,
-                    dpCount: 58,
-                    lockCount: 3,
-                    dpAmountIdr: 19800000
-                  },
-                  '2026-11-04': {
-                    agents: [
-                      { name: 'Agen 1', usdtTopup: 600, trxFeeUsdt: 1, feeType: 'percent', feeValue: 5, dongFeeMode: 'deduct', dongRate: 25400 }
-                    ],
-                    spendDong: 15100000,
-                    registCount: 250,
-                    dpCount: 63,
-                    lockCount: 3,
-                    dpAmountIdr: 22900000
-                  }
-                }
-              }
-            }
+            months: {}
           },
           {
             id: 'site_atg',
@@ -866,34 +795,22 @@
     }
 
     function computeAgentTopup(ag) {
-      const baseUsdt = Math.max(0, parseNum(ag.usdtTopup));
+      const cleanUsdt = Math.max(0, parseNum(ag.usdtTopup));
       const trxFee = Math.max(0, parseNum(ag.trxFeeUsdt));
       const rate = Math.max(0, parseNum(ag.dongRate));
-      const feeType = ag.feeType || 'percent';
-      const feeVal = Math.max(0, parseNum(ag.feeValue));
-      const dongFeeMode = ag.dongFeeMode || 'deduct';
+      const feePercent = Math.max(0, parseNum(ag.feeValue));
 
-      let billedUsdt = baseUsdt;
-      let dongReceived = 0;
-
-      if (feeType === 'percent') {
-        const netUsdtForDong = baseUsdt * Math.max(0, 1 - feeVal / 100);
-        dongReceived = netUsdtForDong * rate;
-      } else if (feeType === 'usdt') {
-        billedUsdt = baseUsdt + feeVal;
-        dongReceived = baseUsdt * rate;
-      } else if (feeType === 'dong') {
-        const grossDong = baseUsdt * rate;
-        if (dongFeeMode === 'add') {
-          dongReceived = grossDong + feeVal;
-        } else {
-          dongReceived = Math.max(0, grossDong - feeVal);
-        }
-      }
+      // Topup Bersih = nominal pokok (misal 500), dikalikan langsung dengan Kurs Dong (bisa 0 / kosong)
+      const agentFeeUsdt = cleanUsdt * (feePercent / 100);
+      // Topup Kotor = Topup Bersih + Fee Agen % (misal 500 + 5% = 525)
+      const grossUsdt = cleanUsdt + agentFeeUsdt;
+      const dongReceived = cleanUsdt * rate;
 
       return {
-        baseUsdt,
-        billedUsdt,
+        cleanUsdt,
+        feePercent,
+        agentFeeUsdt,
+        grossUsdt,
         trxFee,
         dongReceived
       };
@@ -923,10 +840,13 @@
       const totalUsdtCostIdr = carryIdr + totalPurchaseIdr;
       const avgUsdtRateIdr = totalUsdtStock > 0 ? totalUsdtCostIdr / totalUsdtStock : (carryRateIdr || 18300);
 
-      let totalTopupUsdt = 0;
+      let totalCleanTopupUsdt = 0;
+      let totalGrossTopupUsdt = 0;
+      let totalAgentFeeUsdt = 0;
       let totalTopupTrxFee = 0;
       let totalDongReceived = 0;
       let totalSpendDong = 0;
+      let totalManualSpendIdr = 0;
       let totalRegist = 0;
       let totalDpCount = 0;
       let totalLock = 0;
@@ -937,29 +857,37 @@
       sortedDates.forEach((dKey) => {
         const day = m.days[dKey];
         if (!day) return;
-        let dayTopup = 0;
+        let dayClean = 0;
+        let dayGross = 0;
+        let dayAgentFee = 0;
         let dayTrx = 0;
         let dayDongIn = 0;
         (day.agents || []).forEach((ag) => {
           const calc = computeAgentTopup(ag);
-          dayTopup += calc.billedUsdt;
+          dayClean += calc.cleanUsdt;
+          dayGross += calc.grossUsdt;
+          dayAgentFee += calc.agentFeeUsdt;
           dayTrx += calc.trxFee;
           dayDongIn += calc.dongReceived;
         });
         const spDong = Math.max(0, parseNum(day.spendDong));
+        const manSpendIdr = Math.max(0, parseNum(day.manualSpendIdr));
         const reg = Math.max(0, parseNum(day.registCount));
         const dpC = Math.max(0, parseNum(day.dpCount));
         const lck = Math.max(0, parseNum(day.lockCount));
         const dpIdr = Math.max(0, parseNum(day.dpAmountIdr));
 
-        if (dayTopup > 0 || dayTrx > 0 || dayDongIn > 0 || spDong > 0 || reg > 0 || dpC > 0 || lck > 0 || dpIdr > 0) {
+        if (dayClean > 0 || dayGross > 0 || dayTrx > 0 || dayDongIn > 0 || spDong > 0 || manSpendIdr > 0 || reg > 0 || dpC > 0 || lck > 0 || dpIdr > 0) {
           activeDaysCount++;
         }
 
-        totalTopupUsdt += dayTopup;
+        totalCleanTopupUsdt += dayClean;
+        totalGrossTopupUsdt += dayGross;
+        totalAgentFeeUsdt += dayAgentFee;
         totalTopupTrxFee += dayTrx;
         totalDongReceived += dayDongIn;
         totalSpendDong += spDong;
+        totalManualSpendIdr += manSpendIdr;
         totalRegist += reg;
         totalDpCount += dpC;
         totalLock += lck;
@@ -967,19 +895,21 @@
       });
 
       const totalAllTrxFee = totalPurchaseTrxFee + totalTopupTrxFee;
-      const remainingUsdt = totalUsdtStock - totalTopupUsdt - totalTopupTrxFee;
+      const remainingUsdt = totalUsdtStock - totalGrossTopupUsdt - totalTopupTrxFee;
+      const totalAllTopupWithTrxUsdt = totalGrossTopupUsdt + totalTopupTrxFee;
 
       const carryDong = Math.max(0, parseNum(m.dongCarryOver.amount));
       const totalDongAvailable = carryDong + totalDongReceived;
       const remainingDong = totalDongAvailable - totalSpendDong;
 
-      const totalTopupCostIdr = (totalTopupUsdt + totalTopupTrxFee) * avgUsdtRateIdr;
+      const totalTopupCostIdr = totalAllTopupWithTrxUsdt * avgUsdtRateIdr;
       const effectiveIdrPerDong = totalDongAvailable > 0
-        ? ((carryDong * (avgUsdtRateIdr / 25400)) + totalTopupCostIdr) / totalDongAvailable
-        : (avgUsdtRateIdr / 25400);
+        ? ((carryDong * (avgUsdtRateIdr / 24500)) + totalTopupCostIdr) / totalDongAvailable
+        : (avgUsdtRateIdr / 24500);
 
-      const totalSpendModalIdr = totalSpendDong * effectiveIdrPerDong;
-      const costPerDpIdr = totalDpCount > 0 ? totalSpendModalIdr / totalDpCount : 0;
+      // Topup + Fee Agen + Fee TRX = Modal Spend (dikalikan kurs rata-rata beli USDT)
+      const totalSpendModalIdr = totalTopupCostIdr;
+      const costPerDpIdr = totalRegist > 0 ? totalSpendModalIdr / totalRegist : 0;
 
       return {
         carryUsdt,
@@ -991,7 +921,10 @@
         totalUsdtStock,
         totalUsdtCostIdr,
         avgUsdtRateIdr,
-        totalTopupUsdt,
+        totalCleanTopupUsdt,
+        totalTopupUsdt: totalGrossTopupUsdt,
+        totalAllTopupWithTrxUsdt,
+        totalAgentFeeUsdt,
         totalTopupTrxFee,
         totalAllTrxFee,
         remainingUsdt,
@@ -1138,7 +1071,8 @@
       mSel.innerHTML = MONTHS_ID.map((name, idx) =>
         `<option value="${idx}" ${idx === state.selectedMonth ? 'selected' : ''}>${name}</option>`
       ).join('');
-      const years = [2025, 2026, 2027, 2028];
+      const years = [];
+      for (let yr = 2024; yr <= 2040; yr++) years.push(yr);
       ySel.innerHTML = years.map((yr) =>
         `<option value="${yr}" ${yr === state.selectedYear ? 'selected' : ''}>${yr}</option>`
       ).join('');
@@ -1230,18 +1164,20 @@
       for (let d = 1; d <= daysInMonth; d++) {
         const isoDate = `${state.selectedYear}-${String(state.selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const day = m.days[isoDate];
-        let dayTopup = 0;
+        let dayCleanTopup = 0;
+        let dayTotalTopup = 0;
+        let dayAgentFee = 0;
         let dayTrx = 0;
-        let dayDongIn = 0;
         const agentNames = [];
 
         if (day && Array.isArray(day.agents)) {
           day.agents.forEach((ag) => {
             const c = computeAgentTopup(ag);
-            dayTopup += c.billedUsdt;
+            dayCleanTopup += c.cleanUsdt;
+            dayTotalTopup += c.grossUsdt;
+            dayAgentFee += c.agentFeeUsdt;
             dayTrx += c.trxFee;
-            dayDongIn += c.dongReceived;
-            if (c.billedUsdt > 0) agentNames.push(`${ag.name || 'Agen'} ($${c.billedUsdt})`);
+            if (c.cleanUsdt > 0) agentNames.push(`${ag.name || 'Agen'} ($${c.cleanUsdt.toLocaleString('en-US', { maximumFractionDigits: 2 })})`);
           });
         }
 
@@ -1250,10 +1186,11 @@
         const dpC = day ? Math.max(0, parseNum(day.dpCount)) : 0;
         const lck = day ? Math.max(0, parseNum(day.lockCount)) : 0;
         const dpIdr = day ? Math.max(0, parseNum(day.dpAmountIdr)) : 0;
-        const modalSpendIdr = spDong * metrics.effectiveIdrPerDong;
-        const costPerDp = dpC > 0 ? modalSpendIdr / dpC : 0;
+        const dayTotalWithTrx = dayTotalTopup + dayTrx;
+        const modalSpendIdr = dayTotalWithTrx * metrics.avgUsdtRateIdr;
+        const costPerDp = reg > 0 ? modalSpendIdr / reg : 0;
 
-        const hasData = dayTopup > 0 || dayTrx > 0 || dayDongIn > 0 || spDong > 0 || reg > 0 || dpC > 0 || lck > 0 || dpIdr > 0;
+        const hasData = dayCleanTopup > 0 || dayTotalWithTrx > 0 || dayAgentFee > 0 || dayTrx > 0 || spDong > 0 || reg > 0 || dpC > 0 || lck > 0 || dpIdr > 0;
         const rowBg = hasData ? 'bg-white hover:bg-[#FAF6F2]' : 'bg-[#FAF6F2]/40 hover:bg-[#FAF6F2] text-[#7A686A]';
 
         rowsHtml += `
@@ -1262,10 +1199,10 @@
               <div class="text-[#3D2C2E]">${formatDisplayDate(isoDate)}</div>
               ${agentNames.length ? `<div class="text-[11px] font-semibold text-[#8E4A55]">${escHtml(agentNames.join(', '))}</div>` : ''}
             </td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dayTopup > 0 ? 'text-[#3D2C2E]' : ''}">${dayTopup > 0 ? fmtUsdt(dayTopup) : '-'}</td>
+            <td class="py-2.5 px-3 text-right font-extrabold tabular-nums ${dayTotalWithTrx > 0 ? 'text-[#8E4A55]' : ''}">${dayTotalWithTrx > 0 ? fmtUsdt(dayTotalWithTrx) : '-'}</td>
+            <td class="py-2.5 px-3 text-right font-extrabold tabular-nums ${dayCleanTopup > 0 ? 'text-[#3D2C2E]' : ''}">${dayCleanTopup > 0 ? fmtUsdt(dayCleanTopup) : '-'}</td>
+            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dayAgentFee > 0 ? 'text-[#8E4A55]' : ''}">${dayAgentFee > 0 ? fmtUsdt(dayAgentFee) : '-'}</td>
             <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dayTrx > 0 ? 'text-[#BE123C]' : ''}">${dayTrx > 0 ? fmtUsdt(-dayTrx) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dayDongIn > 0 ? 'text-[#15803D]' : ''}">${dayDongIn > 0 ? fmtDong(dayDongIn) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${spDong > 0 ? 'text-[#3D2C2E]' : ''}">${spDong > 0 ? fmtDong(spDong) : '-'}</td>
             <td class="py-2.5 px-3 text-right font-bold tabular-nums ${modalSpendIdr > 0 ? 'text-[#8E4A55]' : ''}">${modalSpendIdr > 0 ? fmtIdr(modalSpendIdr) : '-'}</td>
             <td class="py-2.5 px-3 text-center font-extrabold tabular-nums">
               <span>${fmtInt(reg)}</span> | <span class="text-[#15803D]">${fmtInt(dpC)}</span> | <span class="text-[#BE123C]">${fmtInt(lck)}</span>
@@ -1285,10 +1222,10 @@
       document.getElementById('dailyTableFoot').innerHTML = `
         <tr>
           <td class="py-3 px-4 text-[#8E4A55]">TOTAL BULAN INI</td>
-          <td class="py-3 px-3 text-right tabular-nums">${fmtUsdt(metrics.totalTopupUsdt)}</td>
+          <td class="py-3 px-3 text-right tabular-nums text-[#8E4A55]">${fmtUsdt(metrics.totalAllTopupWithTrxUsdt)}</td>
+          <td class="py-3 px-3 text-right tabular-nums text-[#3D2C2E]">${fmtUsdt(metrics.totalCleanTopupUsdt)}</td>
+          <td class="py-3 px-3 text-right tabular-nums text-[#8E4A55]">${fmtUsdt(metrics.totalAgentFeeUsdt)}</td>
           <td class="py-3 px-3 text-right tabular-nums text-[#BE123C]">${fmtUsdt(-metrics.totalTopupTrxFee)}</td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#15803D]">${fmtDong(metrics.totalDongReceived)}</td>
-          <td class="py-3 px-3 text-right tabular-nums">${fmtDong(metrics.totalSpendDong)}</td>
           <td class="py-3 px-3 text-right tabular-nums text-[#8E4A55]">${fmtIdr(metrics.totalSpendModalIdr)}</td>
           <td class="py-3 px-3 text-center tabular-nums">${fmtInt(metrics.totalRegist)} | <span class="text-[#15803D]">${fmtInt(metrics.totalDpCount)}</span> | <span class="text-[#BE123C]">${fmtInt(metrics.totalLock)}</span></td>
           <td class="py-3 px-3 text-right tabular-nums text-[#15803D]">${fmtIdr(metrics.totalDpIdr)}</td>
@@ -1337,13 +1274,13 @@
         if (!day || !Array.isArray(day.agents)) return;
         day.agents.forEach((ag) => {
           const c = computeAgentTopup(ag);
-          if (c.billedUsdt > 0 || c.trxFee > 0) {
+          if (c.grossUsdt > 0 || c.trxFee > 0) {
             events.push({
               date: dKey,
               order: 3,
               type: 'daily_topup',
               agentName: ag.name || 'Agen',
-              topupUsdt: c.billedUsdt,
+              topupUsdt: c.grossUsdt,
               trxFee: c.trxFee
             });
           }
@@ -1381,7 +1318,6 @@
               <td class="py-3 px-4 font-bold whitespace-nowrap">${formatDisplayDate(p.date)}</td>
               <td class="py-3 px-4">
                 <div class="font-extrabold text-[#3D2C2E]">${escHtml(p.source || 'Pembelian USDT')}</div>
-                <div class="text-[11px] text-[#7A686A]">Beli Kotor: ${fmtUsdt(gross)} • Potong Fee TRX Beli: ${fmtUsdt(-trx)}</div>
               </td>
               <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtUsdt(net)}</td>
               <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
@@ -1579,7 +1515,7 @@
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
           <div class="text-xs font-bold text-[#7A686A]">Total Regist | DP | Lock</div>
           <div class="text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtInt(sumRegist)} | ${fmtInt(sumDpCount)} | ${fmtInt(sumLock)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Cost / DP Global: ${fmtIdr(sumDpCount > 0 ? sumSpendIdr / sumDpCount : 0)}</div>
+          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Cost / DP Global: ${fmtIdr(sumRegist > 0 ? sumSpendIdr / sumRegist : 0)}</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
           <div class="text-xs font-bold text-[#7A686A]">Total Nominal DP Global</div>
@@ -1627,11 +1563,9 @@
 
     function updatePurchasePreviewBadge() {
       const gross = Math.max(0, parseNum(document.getElementById('purchaseUsdtGross').value));
-      const trx = Math.max(0, parseNum(document.getElementById('purchaseTrxFee').value));
       const idr = Math.max(0, parseNum(document.getElementById('purchaseIdrTotal').value));
-      const net = Math.max(0, gross - trx);
-      const rate = net > 0 ? idr / net : 0;
-      document.getElementById('usdtLivePreviewBadge').textContent = `Bersih Masuk: ${fmtUsdt(net)} • Kurs Efektif: ${fmtIdr(rate)}`;
+      const rate = gross > 0 ? idr / gross : 0;
+      document.getElementById('usdtLivePreviewBadge').textContent = `Bersih Masuk: ${fmtUsdt(gross)} • Kurs Efektif: ${fmtIdr(rate)}`;
     }
 
     function renderAll() {
@@ -1692,7 +1626,7 @@
         modalAgentsDraft = JSON.parse(JSON.stringify(existing.agents));
       } else {
         modalAgentsDraft = [
-          { name: 'Agen 1', usdtTopup: '', trxFeeUsdt: 1, feeType: 'percent', feeValue: 5, dongFeeMode: 'deduct', dongRate: 25400 }
+          { name: 'Agen 1', usdtTopup: '', trxFeeUsdt: '', feeType: 'percent', feeValue: '', dongRate: '' }
         ];
       }
 
@@ -1705,30 +1639,25 @@
       renderModalAgentCards();
     }
 
+    function getAgentPreviewTexts(ag) {
+      const calc = computeAgentTopup(ag);
+      const rate = Math.max(0, parseNum(ag.dongRate));
+      const cleanStr = calc.cleanUsdt.toLocaleString('en-US', { maximumFractionDigits: 2 });
+      const pctStr = calc.feePercent.toLocaleString('en-US', { maximumFractionDigits: 2 });
+      const feeBadgeText = `$${cleanStr} + ${pctStr}% = ${fmtUsdt(calc.grossUsdt)}`;
+      const dongBadgeText = `${cleanStr} × ${fmtInt(rate)} = ${fmtDong(calc.dongReceived)}`;
+      return { feeBadgeText, dongBadgeText };
+    }
+
     function renderModalAgentCards() {
       const container = document.getElementById('modalAgentsContainer');
-      const presets = state.customPresets;
 
       container.innerHTML = modalAgentsDraft.map((ag, idx) => {
-        const calc = computeAgentTopup(ag);
-        const fType = ag.feeType || 'percent';
-        let presetList = presets.feePercents;
-        let presetLabel = '%';
-        if (fType === 'dong') {
-          presetList = presets.feeDongs;
-          presetLabel = '₫';
-        } else if (fType === 'usdt') {
-          presetList = presets.feeUsdts;
-          presetLabel = '$';
-        }
-
-        const feePresetsHtml = presetList.map((val) =>
-          `<button type="button" data-ag-preset-fee="${idx}:${val}" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${Number(ag.feeValue) === Number(val) ? 'bg-[#8E4A55] text-white border-[#8E4A55]' : 'bg-white text-[#7A686A] border-[#E8D8D0] hover:border-[#B76E79]'}">${fType === 'dong' ? fmtInt(val) : val}${presetLabel}</button>`
-        ).join('');
-
-        const ratePresetsHtml = presets.dongRates.map((rt) =>
-          `<button type="button" data-ag-preset-rate="${idx}:${rt}" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${Number(ag.dongRate) === Number(rt) ? 'bg-[#8E4A55] text-white border-[#8E4A55]' : 'bg-white text-[#7A686A] border-[#E8D8D0] hover:border-[#B76E79]'}">${fmtInt(rt)}</button>`
-        ).join('');
+        const valTopup = ag.usdtTopup === 0 || ag.usdtTopup ? escHtml(ag.usdtTopup) : '';
+        const valFee = ag.feeValue === 0 || ag.feeValue ? escHtml(ag.feeValue) : '';
+        const valTrx = ag.trxFeeUsdt === 0 || ag.trxFeeUsdt ? escHtml(ag.trxFeeUsdt) : '';
+        const valRate = ag.dongRate === 0 || ag.dongRate ? escHtml(ag.dongRate) : '';
+        const { feeBadgeText, dongBadgeText } = getAgentPreviewTexts(ag);
 
         return `
           <div class="rounded-2xl border border-[#E8D8D0] bg-[#FAF6F2]/75 p-4 space-y-3">
@@ -1738,9 +1667,9 @@
                 <input type="text" data-ag-field="name" data-ag-idx="${idx}" value="${escHtml(ag.name || '')}" placeholder="Nama Agen"
                   class="rounded-xl border border-[#E8D8D0] bg-white px-3 py-1.5 text-xs sm:text-sm font-extrabold text-[#3D2C2E] focus:outline-none focus:border-[#B76E79]" />
               </div>
-              <div class="flex items-center gap-2">
-                <span class="px-3 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-extrabold tabular-nums">
-                  Diterima: ${fmtDong(calc.dongReceived)}
+              <div class="flex flex-wrap items-center gap-2">
+                <span data-ag-dong-badge="${idx}" class="px-3 py-1 rounded-full bg-[#DCFCE7] border border-[#BBF7D0] text-[#15803D] text-xs font-extrabold tabular-nums">
+                  ${dongBadgeText}
                 </span>
                 ${modalAgentsDraft.length > 1 ? `
                   <button type="button" data-remove-agent="${idx}" class="p-1.5 rounded-full hover:bg-[#FFE4E6] text-[#BE123C] transition" title="Hapus Agen">
@@ -1752,75 +1681,39 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
-                <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Topup USDT ($)</label>
-                <input type="text" data-ag-field="usdtTopup" data-ag-idx="${idx}" value="${escHtml(ag.usdtTopup)}" placeholder="500"
+                <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Topup USDT Bersih ($)</label>
+                <input type="text" data-ag-field="usdtTopup" data-ag-idx="${idx}" value="${valTopup}" placeholder="0 / kosong"
                   class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
               </div>
 
               <div>
-                <div class="flex items-center justify-between mb-1">
-                  <label class="text-[11px] font-bold text-[#7A686A]">Fee TRX ($)</label>
-                  <div class="flex gap-1">
-                    ${[0, 1, 1.5, 2].map((v) => `<button type="button" data-ag-quick-trx="${idx}:${v}" class="px-1.5 py-0.2 rounded bg-white border border-[#E8D8D0] text-[10px] font-bold text-[#8E4A55]">${v === 0 ? '0' : '$' + v}</button>`).join('')}
-                  </div>
+                <div class="flex items-center justify-between gap-1 mb-1">
+                  <label class="text-[11px] font-bold text-[#7A686A]">Fee Agen (%)</label>
+                  <span data-ag-fee-badge="${idx}" class="px-2 py-0.5 rounded-full bg-[#F7ECEE] border border-[#E5C9CE] text-[10px] font-extrabold text-[#8E4A55] tabular-nums">
+                    ${feeBadgeText}
+                  </span>
                 </div>
-                <input type="text" data-ag-field="trxFeeUsdt" data-ag-idx="${idx}" value="${escHtml(ag.trxFeeUsdt)}" placeholder="1"
+                <input type="text" data-ag-field="feeValue" data-ag-idx="${idx}" value="${valFee}" placeholder="0 / kosong"
+                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Fee TRX ($) <span class="text-[10px] font-normal">(Potong Saldo)</span></label>
+                <input type="text" data-ag-field="trxFeeUsdt" data-ag-idx="${idx}" value="${valTrx}" placeholder="0 / kosong"
                   class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#BE123C] tabular-nums" />
               </div>
 
               <div>
-                <div class="flex items-center justify-between mb-1">
-                  <label class="text-[11px] font-bold text-[#7A686A]">Fee Agen</label>
-                  <select data-ag-field="feeType" data-ag-idx="${idx}" class="rounded border border-[#E8D8D0] bg-white px-1.5 py-0.5 text-[10px] font-extrabold text-[#8E4A55]">
-                    <option value="percent" ${fType === 'percent' ? 'selected' : ''}>% Persen</option>
-                    <option value="dong" ${fType === 'dong' ? 'selected' : ''}>₫ Dong</option>
-                    <option value="usdt" ${fType === 'usdt' ? 'selected' : ''}>$ USDT</option>
-                  </select>
-                </div>
-                <input type="text" data-ag-field="feeValue" data-ag-idx="${idx}" value="${escHtml(ag.feeValue)}" placeholder="0"
-                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
-                <div class="flex flex-wrap items-center gap-1 mt-1.5">
-                  ${feePresetsHtml}
-                  <button type="button" data-add-preset-fee="${fType}" class="px-2 py-0.5 rounded-full bg-[#F7ECEE] text-[#8E4A55] text-[10px] font-extrabold">+ Tambah ${presetLabel}</button>
-                </div>
-                ${fType === 'dong' ? `
-                  <select data-ag-field="dongFeeMode" data-ag-idx="${idx}" class="mt-1.5 w-full rounded-lg border border-[#E8D8D0] bg-white px-2 py-1 text-[11px] font-bold text-[#7A686A]">
-                    <option value="deduct" ${(ag.dongFeeMode || 'deduct') === 'deduct' ? 'selected' : ''}>Potong dari Dong Diterima (-₫)</option>
-                    <option value="add" ${ag.dongFeeMode === 'add' ? 'selected' : ''}>Tambah ke Dong Diterima (+₫)</option>
-                  </select>
-                ` : ''}
-              </div>
-
-              <div>
                 <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Kurs Dong (₫/$)</label>
-                <input type="text" data-ag-field="dongRate" data-ag-idx="${idx}" value="${escHtml(ag.dongRate)}" placeholder="25400"
+                <input type="text" data-ag-field="dongRate" data-ag-idx="${idx}" value="${valRate}" placeholder="0 / kosong"
                   class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
-                <div class="flex flex-wrap items-center gap-1 mt-1.5">
-                  ${ratePresetsHtml}
-                  <button type="button" data-add-preset-rate="1" class="px-2 py-0.5 rounded-full bg-[#F7ECEE] text-[#8E4A55] text-[10px] font-extrabold">+ Kurs</button>
-                </div>
               </div>
             </div>
           </div>
         `;
       }).join('');
 
-      updateModalSummaryHeader();
       if (window.lucide) window.lucide.createIcons();
-    }
-
-    function updateModalSummaryHeader() {
-      let totTopup = 0;
-      let totTrx = 0;
-      let totDong = 0;
-      modalAgentsDraft.forEach((ag) => {
-        const c = computeAgentTopup(ag);
-        totTopup += c.billedUsdt;
-        totTrx += c.trxFee;
-        totDong += c.dongReceived;
-      });
-      document.getElementById('modalTopupSummaryText').textContent =
-        `Topup: ${fmtUsdt(totTopup)} • Fee TRX: ${fmtUsdt(totTrx)} • Dong Diterima: ${fmtDong(totDong)}`;
     }
 
     function renderAccountUsersList() {
@@ -1871,7 +1764,7 @@
       renderAll();
     });
 
-    ['purchaseUsdtGross', 'purchaseTrxFee', 'purchaseIdrTotal'].forEach((id) => {
+    ['purchaseUsdtGross', 'purchaseIdrTotal'].forEach((id) => {
       document.getElementById(id).addEventListener('input', updatePurchasePreviewBadge);
     });
 
@@ -1883,7 +1776,6 @@
       const date = document.getElementById('purchaseDate').value || `${getMonthKey()}-01`;
       const source = document.getElementById('purchaseSource').value.trim() || 'Pembelian USDT';
       const grossUsdt = Math.max(0, parseNum(document.getElementById('purchaseUsdtGross').value));
-      const trxFeeUsdt = Math.max(0, parseNum(document.getElementById('purchaseTrxFee').value));
       const idrTotal = Math.max(0, parseNum(document.getElementById('purchaseIdrTotal').value));
 
       if (grossUsdt <= 0) {
@@ -1896,7 +1788,7 @@
         date,
         source,
         grossUsdt,
-        trxFeeUsdt,
+        trxFeeUsdt: 0,
         idrTotal,
         isStandaloneTrx: false
       });
@@ -1950,14 +1842,11 @@
       const field = e.target.getAttribute('data-ag-field');
       if (isNaN(idx) || !field || !modalAgentsDraft[idx]) return;
       modalAgentsDraft[idx][field] = e.target.value;
-      updateModalSummaryHeader();
-      const card = e.target.closest('.rounded-2xl');
-      if (card) {
-        const badge = card.querySelector('.bg-\\[\\#DCFCE7\\]');
-        if (badge) {
-          badge.textContent = `Diterima: ${fmtDong(computeAgentTopup(modalAgentsDraft[idx]).dongReceived)}`;
-        }
-      }
+      const { feeBadgeText, dongBadgeText } = getAgentPreviewTexts(modalAgentsDraft[idx]);
+      const feeEl = document.querySelector(`[data-ag-fee-badge="${idx}"]`);
+      const dongEl = document.querySelector(`[data-ag-dong-badge="${idx}"]`);
+      if (feeEl) feeEl.textContent = feeBadgeText;
+      if (dongEl) dongEl.textContent = dongBadgeText;
     });
 
     document.getElementById('modalAgentsContainer').addEventListener('change', (e) => {
@@ -2083,11 +1972,10 @@
         modalAgentsDraft.push({
           name: `Agen ${modalAgentsDraft.length + 1}`,
           usdtTopup: '',
-          trxFeeUsdt: 1,
+          trxFeeUsdt: '',
           feeType: 'percent',
-          feeValue: 5,
-          dongFeeMode: 'deduct',
-          dongRate: 25400
+          feeValue: '',
+          dongRate: ''
         });
         renderModalAgentCards();
         return;
@@ -2190,14 +2078,6 @@
       }
 
       // Quick Purchase TRX
-      const qPurTrx = target.closest('[data-quick-purchase-trx]');
-      if (qPurTrx) {
-        document.getElementById('purchaseTrxFee').value = qPurTrx.getAttribute('data-quick-purchase-trx');
-        updatePurchasePreviewBadge();
-        return;
-      }
-
-      // Delete purchase row
       const delPurBtn = target.closest('[data-delete-purchase]');
       if (delPurBtn) {
         const purId = delPurBtn.getAttribute('data-delete-purchase');
@@ -2337,18 +2217,22 @@
         const monthKey = getMonthKey();
         const m = ensureMonthData(site, monthKey);
         const metrics = computeSiteMonthMetrics(site, monthKey);
-        const lines = [['Tanggal', 'Site', 'Topup_USDT', 'Fee_TRX', 'Dong_Diterima', 'Spend_Dong', 'Modal_Spend_IDR', 'Regist', 'DP', 'Lock', 'Nominal_DP_IDR']];
+        const lines = [['Tanggal', 'Site', 'Topup_Bersih_USDT', 'Fee_Agen_USDT', 'Topup_Kotor_USDT', 'Fee_TRX', 'Dong_Diterima', 'Spend_Dong', 'Modal_Spend_IDR', 'Regist', 'DP', 'Lock', 'TTL_DP_IDR']];
         Object.keys(m.days).sort().forEach((dKey) => {
           const day = m.days[dKey];
-          let t = 0, trx = 0, dIn = 0;
+          let clean = 0, feeAg = 0, gross = 0, trx = 0, dIn = 0;
           (day.agents || []).forEach((ag) => {
             const c = computeAgentTopup(ag);
-            t += c.billedUsdt;
+            clean += c.cleanUsdt;
+            feeAg += c.agentFeeUsdt;
+            gross += c.grossUsdt;
             trx += c.trxFee;
             dIn += c.dongReceived;
           });
           const sp = parseNum(day.spendDong);
-          lines.push([dKey, site.name, t, trx, Math.round(dIn), sp, Math.round(sp * metrics.effectiveIdrPerDong), parseNum(day.registCount), parseNum(day.dpCount), parseNum(day.lockCount), parseNum(day.dpAmountIdr)]);
+          const manSpend = parseNum(day.manualSpendIdr);
+          const modalIdr = manSpend > 0 ? manSpend : Math.round(sp * metrics.effectiveIdrPerDong);
+          lines.push([dKey, site.name, clean, feeAg, gross, trx, Math.round(dIn), sp, modalIdr, parseNum(day.registCount), parseNum(day.dpCount), parseNum(day.lockCount), parseNum(day.dpAmountIdr)]);
         });
         const blob = new Blob([lines.map((r) => r.join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
