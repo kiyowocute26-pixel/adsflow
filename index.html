@@ -170,6 +170,10 @@
             <i data-lucide="pencil" class="w-3.5 h-3.5 text-[#7A686A]"></i>
             <span>Ubah Nama</span>
           </button>
+          <button id="btnDeleteSite" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFE4E6] hover:bg-[#FECDD3] border border-[#FECDD3] text-xs font-bold text-[#BE123C] transition">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Hapus Site</span>
+          </button>
           <button id="btnAddSite" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#B76E79] hover:bg-[#8E4A55] text-xs font-extrabold text-white shadow-xs transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i>
             <span>Tambah Site</span>
@@ -627,167 +631,157 @@
     };
 
     const LOCAL_STATE_KEY = 'adsflow_workspace_state_v4';
-    const SESSION_USER_KEY = 'adsflow_active_user_v4';
-
-    const MONTHS_ID = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    const LEGACY_STATE_KEYS = [
+      'adsflow_workspace_state_v4',
+      'adsflow_workspace_state_v3',
+      'adsflow_workspace_state_v2',
+      'adsflow_workspace_state_v1',
+      'adstrack_pro_state_v1'
     ];
+    const SESSION_USER_KEY = 'adsflow_active_user_v4';
+    const MONTHS_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+    let db = null;
+    let cloudDocRef = null;
+    let isApplyingRemote = false;
+    let modalEditingDate = '';
+    let modalDraftAgents = [];
+    let hasUserDataLoaded = false;
 
     function buildDefaultAccounts() {
-      return [
-        { username: 'adsflow', password: '123456', role: 'Owner' }
-      ];
+      return [{ username: 'adsflow', password: '123' }];
     }
 
     function buildInitialSeedState() {
       return {
-        updatedAt: Date.now(),
-        selectedYear: 2026,
-        selectedMonth: 10,
+        updatedAt: 0,
         activeSiteId: 'site_jago',
-        activeSubTab: 'daily',
+        activeSubtab: 'daily',
+        selectedMonth: 10,
+        selectedYear: 2026,
         accounts: buildDefaultAccounts(),
         customPresets: {
-          feePercents: [0, 3, 5, 7, 8],
-          feeDongs: [0, 50000, 100000, 150000],
-          feeUsdts: [0, 1, 2, 5],
+          feePercents: [0, 1, 3, 5, 7, 8],
           dongRates: [25000, 25200, 25400, 25500]
         },
         sites: [
-          {
-            id: 'site_jago',
-            name: 'JAGO',
-            months: {}
-          },
-          {
-            id: 'site_atg',
-            name: 'ATG',
-            months: {}
-          }
+          { id: 'site_jago', name: 'JAGO', months: {} },
+          { id: 'site_atg', name: 'ATG', months: {} }
         ]
       };
     }
 
     function loadLocalState() {
-      try {
-        const raw = localStorage.getItem(LOCAL_STATE_KEY);
-        if (!raw) return buildInitialSeedState();
-        const parsed = JSON.parse(raw);
-        if (!parsed || !Array.isArray(parsed.sites) || parsed.sites.length === 0) {
-          return buildInitialSeedState();
-        }
-        if (!Array.isArray(parsed.accounts) || parsed.accounts.length === 0) {
-          parsed.accounts = buildDefaultAccounts();
-        }
-        if (!parsed.customPresets) {
-          parsed.customPresets = buildInitialSeedState().customPresets;
-        }
-        return parsed;
-      } catch (e) {
-        return buildInitialSeedState();
+      for (const key of LEGACY_STATE_KEYS) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.sites) && parsed.sites.length > 0) {
+            if (!Array.isArray(parsed.accounts) || parsed.accounts.length === 0) {
+              parsed.accounts = buildDefaultAccounts();
+            }
+            if (!parsed.customPresets) {
+              parsed.customPresets = buildInitialSeedState().customPresets;
+            }
+            hasUserDataLoaded = true;
+            return parsed;
+          }
+        } catch (e) {}
       }
+      const emptySeed = buildInitialSeedState();
+      emptySeed.updatedAt = 0;
+      return emptySeed;
     }
 
     let state = loadLocalState();
     let currentUser = sessionStorage.getItem(SESSION_USER_KEY) || '';
-    let db = null;
-    let cloudDocRef = null;
-    let isApplyingRemote = false;
-    let modalEditingDate = '';
-    let modalAgentsDraft = [];
 
-    // Formatters & Parsers
+    function persistState() {
+      state.updatedAt = Date.now();
+      hasUserDataLoaded = true;
+      try {
+        localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
+      } catch (e) {}
+      if (cloudDocRef && !isApplyingRemote) {
+        setDoc(cloudDocRef, {
+          payload: JSON.stringify(state),
+          updatedAt: state.updatedAt
+        }).catch(() => {});
+      }
+    }
+
     function parseNum(val) {
       if (typeof val === 'number') return isFinite(val) ? val : 0;
       if (!val) return 0;
-      let s = String(val).trim().replace(/[^\d.,-]/g, '');
+      let s = String(val).trim().replace(/[^0-9.,-]/g, '');
       if (!s) return 0;
       const dots = (s.match(/\./g) || []).length;
       const commas = (s.match(/,/g) || []).length;
-      if (dots > 0 && commas > 0) {
-        if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
-          s = s.replace(/\./g, '').replace(',', '.');
-        } else {
-          s = s.replace(/,/g, '');
-        }
-      } else if (dots > 1) {
+      if (dots > 1 && commas === 0) {
         s = s.replace(/\./g, '');
-      } else if (commas > 1) {
-        s = s.replace(/,/g, '');
-      } else if (dots === 1) {
+      } else if (dots === 1 && commas === 0) {
         const parts = s.split('.');
-        if (parts[1].length === 3 && parts[0].length >= 1) {
+        if (parts[1].length === 3 && parts[0].length >= 1 && Number(parts[0]) >= 1) {
           s = s.replace('.', '');
         }
-      } else if (commas === 1) {
-        const parts = s.split(',');
-        if (parts[1].length === 3 && parts[0].length >= 1) {
-          s = s.replace(',', '');
-        } else {
-          s = s.replace(',', '.');
-        }
+      } else if (commas > 0 && dots > 0) {
+        s = s.replace(/\./g, '').replace(',', '.');
+      } else if (commas === 1 && dots === 0) {
+        s = s.replace(',', '.');
+      } else {
+        s = s.replace(/,/g, '');
       }
       const n = parseFloat(s);
       return isFinite(n) ? n : 0;
     }
 
-    function fmtIdr(val) {
-      return 'Rp ' + Math.round(val || 0).toLocaleString('id-ID');
+    function fmtInt(n) {
+      return Math.round(n || 0).toLocaleString('id-ID');
     }
 
-    function fmtUsdt(val, decimals = 2) {
-      const n = Number(val || 0);
-      const abs = Math.abs(n).toLocaleString('en-US', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-      });
-      return (n < 0 ? '-$' : '$') + abs;
+    function fmtUsd(n) {
+      return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    function fmtDong(val) {
-      return Math.round(val || 0).toLocaleString('id-ID') + ' ₫';
+    function fmtIdr(n) {
+      return 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
     }
 
-    function fmtInt(val) {
-      return Math.round(val || 0).toLocaleString('id-ID');
-    }
-
-    function escHtml(str) {
-      return String(str ?? '')
+    function escapeHtml(str) {
+      return String(str || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
     }
 
-    function getMonthKey(year = state.selectedYear, monthIdx = state.selectedMonth) {
-      return `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+    function getMonthKey(year = state.selectedYear, month = state.selectedMonth) {
+      return `${year}-${String(month + 1).padStart(2, '0')}`;
     }
 
-    function getDaysInMonth(year, monthIdx) {
-      return new Date(year, monthIdx + 1, 0).getDate();
+    function getDaysInMonth(year, month) {
+      return new Date(year, month + 1, 0).getDate();
     }
 
-    function formatDisplayDate(isoDate) {
-      if (!isoDate || isoDate.length < 10) return isoDate;
-      const [y, m, d] = isoDate.split('-');
-      const mName = (MONTHS_ID[parseInt(m, 10) - 1] || '').slice(0, 3);
-      return `${d} ${mName} ${y}`;
+    function formatDisplayDate(dateStr) {
+      const [y, m, d] = dateStr.split('-');
+      const mIdx = Math.max(0, Math.min(11, parseInt(m, 10) - 1));
+      return `${d} ${MONTHS_ID[mIdx].slice(0, 3)} ${y}`;
     }
 
     function ensureMonthData(site, monthKey) {
       if (!site.months) site.months = {};
       if (!site.months[monthKey]) {
         site.months[monthKey] = {
-          usdtCarryOver: { amount: 0, rateIdr: 0 },
+          usdtCarryOver: { amount: 0, rateIdr: 18300 },
           dongCarryOver: { amount: 0 },
           purchases: [],
           days: {}
         };
       }
       const m = site.months[monthKey];
-      if (!m.usdtCarryOver) m.usdtCarryOver = { amount: 0, rateIdr: 0 };
+      if (!m.usdtCarryOver) m.usdtCarryOver = { amount: 0, rateIdr: 18300 };
       if (!m.dongCarryOver) m.dongCarryOver = { amount: 0 };
       if (!Array.isArray(m.purchases)) m.purchases = [];
       if (!m.days) m.days = {};
@@ -795,170 +789,137 @@
     }
 
     function computeAgentTopup(ag) {
-      const cleanUsdt = Math.max(0, parseNum(ag.usdtTopup));
-      const trxFee = Math.max(0, parseNum(ag.trxFeeUsdt));
-      const rate = Math.max(0, parseNum(ag.dongRate));
-      const feePercent = Math.max(0, parseNum(ag.feeValue));
-
-      // Topup Bersih = nominal pokok (misal 500), dikalikan langsung dengan Kurs Dong (bisa 0 / kosong)
-      const agentFeeUsdt = cleanUsdt * (feePercent / 100);
-      // Topup Kotor = Topup Bersih + Fee Agen % (misal 500 + 5% = 525)
+      const cleanUsdt = Math.max(0, parseNum(ag.topupUsdt));
+      const feePct = Math.max(0, parseNum(ag.feePercent));
+      const agentFeeUsdt = cleanUsdt * (feePct / 100);
       const grossUsdt = cleanUsdt + agentFeeUsdt;
-      const dongReceived = cleanUsdt * rate;
-
-      return {
-        cleanUsdt,
-        feePercent,
-        agentFeeUsdt,
-        grossUsdt,
-        trxFee,
-        dongReceived
-      };
+      const trxFee = Math.max(0, parseNum(ag.trxFeeUsdt));
+      const totalAllUsdt = grossUsdt + trxFee;
+      const dongRate = Math.max(0, parseNum(ag.dongRate));
+      const dongReceived = cleanUsdt * dongRate;
+      return { cleanUsdt, feePct, agentFeeUsdt, grossUsdt, trxFee, totalAllUsdt, dongRate, dongReceived };
     }
 
     function computeSiteMonthMetrics(site, monthKey) {
       const m = ensureMonthData(site, monthKey);
       const carryUsdt = Math.max(0, parseNum(m.usdtCarryOver.amount));
-      const carryRateIdr = Math.max(0, parseNum(m.usdtCarryOver.rateIdr));
-      const carryIdr = carryUsdt * carryRateIdr;
+      const carryRate = Math.max(0, parseNum(m.usdtCarryOver.rateIdr)) || 18300;
+      const carryIdr = carryUsdt * carryRate;
 
-      let totalPurchasedNetUsdt = 0;
-      let totalPurchaseTrxFee = 0;
-      let totalPurchaseIdr = 0;
+      let purchasedCleanUsdt = 0;
+      let purchasedIdr = 0;
+      let standaloneTrxFee = 0;
 
       m.purchases.forEach((p) => {
-        const gross = Math.max(0, parseNum(p.grossUsdt));
-        const trx = Math.max(0, parseNum(p.trxFeeUsdt));
-        const idr = Math.max(0, parseNum(p.idrTotal));
-        const net = p.isStandaloneTrx ? 0 : Math.max(0, gross - trx);
-        totalPurchasedNetUsdt += net;
-        totalPurchaseTrxFee += trx;
-        totalPurchaseIdr += idr;
+        if (p.type === 'trx_only') {
+          standaloneTrxFee += Math.max(0, parseNum(p.trxFeeUsdt));
+        } else {
+          const gross = Math.max(0, parseNum(p.usdtGross));
+          const idr = Math.max(0, parseNum(p.idrTotal));
+          purchasedCleanUsdt += gross;
+          purchasedIdr += idr;
+        }
       });
 
-      const totalUsdtStock = carryUsdt + totalPurchasedNetUsdt;
-      const totalUsdtCostIdr = carryIdr + totalPurchaseIdr;
-      const avgUsdtRateIdr = totalUsdtStock > 0 ? totalUsdtCostIdr / totalUsdtStock : (carryRateIdr || 18300);
+      const totalStockUsdt = carryUsdt + purchasedCleanUsdt;
+      const totalStockIdr = carryIdr + purchasedIdr;
+      const avgUsdtRateIdr = totalStockUsdt > 0 ? (totalStockIdr / totalStockUsdt) : carryRate;
 
-      let totalCleanTopupUsdt = 0;
-      let totalGrossTopupUsdt = 0;
-      let totalAgentFeeUsdt = 0;
-      let totalTopupTrxFee = 0;
-      let totalDongReceived = 0;
-      let totalSpendDong = 0;
-      let totalManualSpendIdr = 0;
+      let dailyCleanTopupUsdt = 0;
+      let dailyAgentFeeUsdt = 0;
+      let dailyGrossTopupUsdt = 0;
+      let dailyTrxFeeUsdt = 0;
+      let dailyDongReceived = 0;
+      let dailySpendDong = 0;
       let totalRegist = 0;
       let totalDpCount = 0;
-      let totalLock = 0;
-      let totalDpIdr = 0;
+      let totalLockCount = 0;
+      let totalDpAmountIdr = 0;
       let activeDaysCount = 0;
 
-      const sortedDates = Object.keys(m.days).sort();
-      sortedDates.forEach((dKey) => {
+      Object.keys(m.days).forEach((dKey) => {
         const day = m.days[dKey];
-        if (!day) return;
-        let dayClean = 0;
-        let dayGross = 0;
-        let dayAgentFee = 0;
-        let dayTrx = 0;
-        let dayDongIn = 0;
+        let hasActivity = false;
         (day.agents || []).forEach((ag) => {
-          const calc = computeAgentTopup(ag);
-          dayClean += calc.cleanUsdt;
-          dayGross += calc.grossUsdt;
-          dayAgentFee += calc.agentFeeUsdt;
-          dayTrx += calc.trxFee;
-          dayDongIn += calc.dongReceived;
+          const c = computeAgentTopup(ag);
+          dailyCleanTopupUsdt += c.cleanUsdt;
+          dailyAgentFeeUsdt += c.agentFeeUsdt;
+          dailyGrossTopupUsdt += c.grossUsdt;
+          dailyTrxFeeUsdt += c.trxFee;
+          dailyDongReceived += c.dongReceived;
+          if (c.cleanUsdt > 0 || c.trxFee > 0) hasActivity = true;
         });
-        const spDong = Math.max(0, parseNum(day.spendDong));
-        const manSpendIdr = Math.max(0, parseNum(day.manualSpendIdr));
+        const sp = Math.max(0, parseNum(day.spendDong));
         const reg = Math.max(0, parseNum(day.registCount));
         const dpC = Math.max(0, parseNum(day.dpCount));
-        const lck = Math.max(0, parseNum(day.lockCount));
+        const lkC = Math.max(0, parseNum(day.lockCount));
         const dpIdr = Math.max(0, parseNum(day.dpAmountIdr));
 
-        if (dayClean > 0 || dayGross > 0 || dayTrx > 0 || dayDongIn > 0 || spDong > 0 || manSpendIdr > 0 || reg > 0 || dpC > 0 || lck > 0 || dpIdr > 0) {
-          activeDaysCount++;
-        }
-
-        totalCleanTopupUsdt += dayClean;
-        totalGrossTopupUsdt += dayGross;
-        totalAgentFeeUsdt += dayAgentFee;
-        totalTopupTrxFee += dayTrx;
-        totalDongReceived += dayDongIn;
-        totalSpendDong += spDong;
-        totalManualSpendIdr += manSpendIdr;
+        dailySpendDong += sp;
         totalRegist += reg;
         totalDpCount += dpC;
-        totalLock += lck;
-        totalDpIdr += dpIdr;
+        totalLockCount += lkC;
+        totalDpAmountIdr += dpIdr;
+        if (sp > 0 || reg > 0 || dpC > 0 || lkC > 0 || dpIdr > 0) hasActivity = true;
+        if (hasActivity) activeDaysCount++;
       });
 
-      const totalAllTrxFee = totalPurchaseTrxFee + totalTopupTrxFee;
-      const remainingUsdt = totalUsdtStock - totalGrossTopupUsdt - totalTopupTrxFee;
-      const totalAllTopupWithTrxUsdt = totalGrossTopupUsdt + totalTopupTrxFee;
+      const totalTrxFeeUsdt = standaloneTrxFee + dailyTrxFeeUsdt;
+      const totalAllTopupWithTrxUsdt = dailyGrossTopupUsdt + dailyTrxFeeUsdt;
+      const remainingUsdt = totalStockUsdt - dailyGrossTopupUsdt - totalTrxFeeUsdt;
 
+      const totalModalSpendIdr = totalAllTopupWithTrxUsdt * avgUsdtRateIdr;
       const carryDong = Math.max(0, parseNum(m.dongCarryOver.amount));
-      const totalDongAvailable = carryDong + totalDongReceived;
-      const remainingDong = totalDongAvailable - totalSpendDong;
-
-      const totalTopupCostIdr = totalAllTopupWithTrxUsdt * avgUsdtRateIdr;
-      const effectiveIdrPerDong = totalDongAvailable > 0
-        ? ((carryDong * (avgUsdtRateIdr / 24500)) + totalTopupCostIdr) / totalDongAvailable
-        : (avgUsdtRateIdr / 24500);
-
-      // Topup + Fee Agen + Fee TRX = Modal Spend (dikalikan kurs rata-rata beli USDT)
-      const totalSpendModalIdr = totalTopupCostIdr;
-      const costPerDpIdr = totalRegist > 0 ? totalSpendModalIdr / totalRegist : 0;
+      const totalDongIn = carryDong + dailyDongReceived;
+      const remainingDong = totalDongIn - dailySpendDong;
+      const effectiveIdrPerDong = totalDongIn > 0 ? (totalModalSpendIdr / totalDongIn) : 0;
+      const costPerDp = totalRegist > 0 ? (totalModalSpendIdr / totalRegist) : 0;
 
       return {
         carryUsdt,
-        carryRateIdr,
+        carryRate,
         carryIdr,
-        totalPurchasedNetUsdt,
-        totalPurchaseTrxFee,
-        totalPurchaseIdr,
-        totalUsdtStock,
-        totalUsdtCostIdr,
+        purchasedCleanUsdt,
+        purchasedIdr,
+        totalStockUsdt,
+        totalStockIdr,
         avgUsdtRateIdr,
-        totalCleanTopupUsdt,
-        totalTopupUsdt: totalGrossTopupUsdt,
+        dailyCleanTopupUsdt,
+        dailyAgentFeeUsdt,
+        dailyGrossTopupUsdt,
+        dailyTrxFeeUsdt,
+        standaloneTrxFee,
+        totalTrxFeeUsdt,
         totalAllTopupWithTrxUsdt,
-        totalAgentFeeUsdt,
-        totalTopupTrxFee,
-        totalAllTrxFee,
         remainingUsdt,
         carryDong,
-        totalDongReceived,
-        totalDongAvailable,
-        totalSpendDong,
+        dailyDongReceived,
+        totalDongIn,
+        dailySpendDong,
         remainingDong,
         effectiveIdrPerDong,
-        totalSpendModalIdr,
+        totalModalSpendIdr,
         totalRegist,
         totalDpCount,
-        totalLock,
-        totalDpIdr,
-        costPerDpIdr,
+        totalLockCount,
+        totalDpAmountIdr,
+        costPerDp,
         activeDaysCount
       };
     }
 
     function showToast(msg, type = 'success') {
-      const wrap = document.getElementById('toastContainer');
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
       const el = document.createElement('div');
-      const colors = type === 'error'
-        ? 'bg-[#FFE4E6] border-[#FECDD3] text-[#BE123C]'
-        : 'bg-[#3D2C2E] border-[#574144] text-white';
-      el.className = `pointer-events-auto px-4 py-2.5 rounded-2xl border shadow-lg text-xs font-extrabold ${colors} animate-pop`;
+      const bg = type === 'error' ? 'bg-[#BE123C] text-white' : 'bg-[#3D2C2E] text-white';
+      el.className = `${bg} px-4 py-2.5 rounded-2xl shadow-lg text-xs font-extrabold tracking-wide animate-pop`;
       el.textContent = msg;
-      wrap.appendChild(el);
-      setTimeout(() => {
-        el.remove();
-      }, 2800);
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 2600);
     }
 
-    function openCustomDialog({ title, message, showInput = false, defaultValue = '', confirmText = 'Ya, Lanjutkan', hideCancel = false }) {
+    function openCustomDialog({ title, message, showInput = false, defaultValue = '', confirmText = 'Ya, Lanjutkan' }) {
       return new Promise((resolve) => {
         const modal = document.getElementById('customDialogModal');
         const titleEl = document.getElementById('customDialogTitle');
@@ -968,14 +929,13 @@
         const btnCancel = document.getElementById('customDialogCancel');
         const btnConfirm = document.getElementById('customDialogConfirm');
 
-        titleEl.textContent = title;
-        msgEl.textContent = message;
+        titleEl.textContent = title || 'Konfirmasi';
+        msgEl.textContent = message || '';
         btnConfirm.textContent = confirmText;
-        btnCancel.classList.toggle('hidden', hideCancel);
 
         if (showInput) {
           inputWrap.classList.remove('hidden');
-          inputEl.value = defaultValue;
+          inputEl.value = defaultValue || '';
         } else {
           inputWrap.classList.add('hidden');
         }
@@ -990,19 +950,9 @@
           resolve(result);
         };
 
-        btnCancel.onclick = () => cleanup(null);
+        btnCancel.onclick = () => cleanup(showInput ? null : false);
         btnConfirm.onclick = () => cleanup(showInput ? inputEl.value : true);
       });
-    }
-
-    function persistState() {
-      state.updatedAt = Date.now();
-      try {
-        localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
-      } catch (e) {}
-      if (cloudDocRef && !isApplyingRemote) {
-        setDoc(cloudDocRef, { payload: JSON.stringify(state), updatedAt: state.updatedAt }, { merge: true }).catch(() => {});
-      }
     }
 
     function initFirebaseSync() {
@@ -1018,16 +968,19 @@
           if (!user) return;
           onSnapshot(cloudDocRef, (snap) => {
             if (!snap.exists()) {
-              setDoc(cloudDocRef, { payload: JSON.stringify(state), updatedAt: state.updatedAt }).catch(() => {});
+              if (hasUserDataLoaded) {
+                setDoc(cloudDocRef, { payload: JSON.stringify(state), updatedAt: state.updatedAt || Date.now() }).catch(() => {});
+              }
               return;
             }
             const data = snap.data();
-            if (data && data.payload && (data.updatedAt || 0) > (state.updatedAt || 0)) {
+            if (data && data.payload && (!hasUserDataLoaded || (data.updatedAt || 0) > (state.updatedAt || 0))) {
               try {
                 const remoteState = JSON.parse(data.payload);
-                if (remoteState && Array.isArray(remoteState.sites)) {
+                if (remoteState && Array.isArray(remoteState.sites) && remoteState.sites.length > 0) {
                   isApplyingRemote = true;
                   state = remoteState;
+                  hasUserDataLoaded = true;
                   localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
                   renderAll();
                   isApplyingRemote = false;
@@ -1041,176 +994,198 @@
             }
           }, () => {
             if (badge) {
-              badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#FEF3C7] text-[#B45309] text-[11px] font-bold';
               badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-[#D97706]"></span><span>Local Mode</span>`;
             }
           });
         });
-      } catch (e) {}
-    }
-
-    function updateAuthScreen() {
-      const cover = document.getElementById('loginCover');
-      const header = document.getElementById('appHeader');
-      const main = document.getElementById('appMain');
-      if (currentUser) {
-        cover.classList.add('hidden');
-        header.classList.remove('hidden');
-        main.classList.remove('hidden');
-        renderAll();
-      } else {
-        cover.classList.remove('hidden');
-        header.classList.add('hidden');
-        main.classList.add('hidden');
+      } catch (e) {
+        if (badge) {
+          badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-[#D97706]"></span><span>Local Mode</span>`;
+        }
       }
     }
 
-    function renderPeriodSelectors() {
+    function updateAuthScreen() {
+      const loginCover = document.getElementById('loginCover');
+      const appHeader = document.getElementById('appHeader');
+      const appMain = document.getElementById('appMain');
+      if (currentUser) {
+        loginCover.classList.add('hidden');
+        appHeader.classList.remove('hidden');
+        appMain.classList.remove('hidden');
+        renderAll();
+      } else {
+        loginCover.classList.remove('hidden');
+        appHeader.classList.add('hidden');
+        appMain.classList.add('hidden');
+      }
+    }
+
+    function renderPeriodControls() {
       const mSel = document.getElementById('monthSelect');
       const ySel = document.getElementById('yearSelect');
-      mSel.innerHTML = MONTHS_ID.map((name, idx) =>
-        `<option value="${idx}" ${idx === state.selectedMonth ? 'selected' : ''}>${name}</option>`
-      ).join('');
-      const years = [];
-      for (let yr = 2024; yr <= 2040; yr++) years.push(yr);
-      ySel.innerHTML = years.map((yr) =>
-        `<option value="${yr}" ${yr === state.selectedYear ? 'selected' : ''}>${yr}</option>`
-      ).join('');
+      if (!mSel || !ySel) return;
+      mSel.innerHTML = MONTHS_ID.map((name, i) => `<option value="${i}" ${i === state.selectedMonth ? 'selected' : ''}>${name}</option>`).join('');
+      let yHtml = '';
+      for (let y = 2024; y <= 2040; y++) {
+        yHtml += `<option value="${y}" ${y === state.selectedYear ? 'selected' : ''}>${y}</option>`;
+      }
+      ySel.innerHTML = yHtml;
     }
 
     function renderSiteTabs() {
       const container = document.getElementById('siteTabsContainer');
       const actions = document.getElementById('siteActionsContainer');
-      const isGlobal = state.activeSiteId === 'GLOBAL';
+      if (!container || !actions) return;
 
-      let html = state.sites.map((site) => {
-        const active = site.id === state.activeSiteId;
-        const cls = active
-          ? 'bg-[#3D2C2E] text-white shadow-xs'
-          : 'bg-[#FAF6F2] hover:bg-[#F3ECE6] text-[#3D2C2E] border border-[#E8D8D0]';
-        return `
-          <button type="button" data-select-site="${escHtml(site.id)}" class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold transition shrink-0 ${cls}">
-            <span class="w-2 h-2 rounded-full ${active ? 'bg-[#E5989B]' : 'bg-[#B76E79]'}"></span>
-            <span>${escHtml(site.name)}</span>
-          </button>
-        `;
+      const isGlobal = state.activeSiteId === 'GLOBAL';
+      let html = state.sites.map((s) => {
+        const active = s.id === state.activeSiteId;
+        return `<button type="button" data-select-site="${s.id}" class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold transition shrink-0 ${active ? 'bg-[#3D2C2E] text-white shadow-xs' : 'bg-[#FAF6F2] hover:bg-[#F3ECE6] border border-[#E8D8D0] text-[#3D2C2E]'}">
+          <span class="w-2 h-2 rounded-full ${active ? 'bg-[#F4A6B1]' : 'bg-[#B76E79]'}"></span>
+          <span>${escapeHtml(s.name)}</span>
+        </button>`;
       }).join('');
 
-      const globalCls = isGlobal
-        ? 'bg-[#8E4A55] text-white shadow-xs'
-        : 'bg-[#F7ECEE] hover:bg-[#EFE0E3] text-[#8E4A55] border border-[#E5C9CE]';
-      html += `
-        <button type="button" data-select-site="GLOBAL" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold transition shrink-0 ${globalCls}">
-          <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
-          <span>Rekap Global</span>
-        </button>
-      `;
+      html += `<button type="button" data-select-site="GLOBAL" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs sm:text-sm font-extrabold transition shrink-0 ${isGlobal ? 'bg-[#8E4A55] text-white shadow-xs' : 'bg-[#F7ECEE] hover:bg-[#EFE0E3] border border-[#E5C9CE] text-[#8E4A55]'}">
+        <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
+        <span>Rekap Global</span>
+      </button>`;
 
       container.innerHTML = html;
       actions.classList.toggle('hidden', isGlobal);
+      const delSiteBtn = document.getElementById('btnDeleteSite');
+      if (delSiteBtn) delSiteBtn.classList.toggle('hidden', state.sites.length <= 1);
     }
 
-    function renderSubTabs(site, metrics) {
-      const daysCount = getDaysInMonth(state.selectedYear, state.selectedMonth);
-      document.getElementById('labelSubtabDaily').textContent = `Pemakaian Harian (Tgl 01 – ${String(daysCount).padStart(2, '0')})`;
-      document.getElementById('labelSubtabUsdt').textContent = `Pembelian USDT & Fee TRX (Sisa: ${fmtUsdt(metrics.remainingUsdt, 0)})`;
-      document.getElementById('labelSubtabDong').textContent = `Saldo & Pemakaian Dong (${fmtDong(metrics.remainingDong)})`;
+    function renderSubnavAndViews() {
+      const isGlobal = state.activeSiteId === 'GLOBAL';
+      const subnav = document.getElementById('siteSubNavBar');
+      const vDaily = document.getElementById('viewSubtabDaily');
+      const vUsdt = document.getElementById('viewSubtabUsdt');
+      const vDong = document.getElementById('viewSubtabDong');
+      const vGlobal = document.getElementById('viewGlobalRecap');
+
+      if (isGlobal) {
+        subnav.classList.add('hidden');
+        vDaily.classList.add('hidden');
+        vUsdt.classList.add('hidden');
+        vDong.classList.add('hidden');
+        vGlobal.classList.remove('hidden');
+        renderGlobalRecapView();
+        return;
+      }
+
+      subnav.classList.remove('hidden');
+      vGlobal.classList.add('hidden');
+
+      const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
+      if (!site) return;
+      state.activeSiteId = site.id;
+
+      const monthKey = getMonthKey();
+      const metrics = computeSiteMonthMetrics(site, monthKey);
+      const totalDays = getDaysInMonth(state.selectedYear, state.selectedMonth);
+
+      document.getElementById('labelSubtabDaily').textContent = `Pemakaian Harian (Tgl 01 – ${totalDays})`;
+      document.getElementById('labelSubtabUsdt').textContent = `Pembelian USDT & Fee TRX (Sisa: ${fmtUsd(metrics.remainingUsdt)})`;
+      document.getElementById('labelSubtabDong').textContent = `Saldo & Pemakaian Dong (${fmtInt(metrics.remainingDong)} ₫)`;
 
       document.querySelectorAll('.subtab-btn').forEach((btn) => {
-        const tab = btn.getAttribute('data-subtab');
-        const active = tab === state.activeSubTab;
-        btn.className = active
-          ? 'subtab-btn inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-extrabold transition bg-[#B76E79] text-white shadow-xs'
-          : 'subtab-btn inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-extrabold transition bg-[#FAF6F2] hover:bg-[#F3ECE6] text-[#7A686A] border border-[#E8D8D0]';
+        const active = btn.getAttribute('data-subtab') === state.activeSubtab;
+        btn.className = `subtab-btn inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-extrabold transition ${active ? 'bg-[#B76E79] text-white shadow-xs' : 'bg-[#FAF6F2] hover:bg-[#F3ECE6] border border-[#E8D8D0] text-[#7A686A]'}`;
       });
 
-      document.getElementById('viewSubtabDaily').classList.toggle('hidden', state.activeSubTab !== 'daily');
-      document.getElementById('viewSubtabUsdt').classList.toggle('hidden', state.activeSubTab !== 'usdt');
-      document.getElementById('viewSubtabDong').classList.toggle('hidden', state.activeSubTab !== 'dong');
+      vDaily.classList.toggle('hidden', state.activeSubtab !== 'daily');
+      vUsdt.classList.toggle('hidden', state.activeSubtab !== 'usdt');
+      vDong.classList.toggle('hidden', state.activeSubtab !== 'dong');
+
+      if (state.activeSubtab === 'daily') renderDailyView(site, monthKey, metrics);
+      if (state.activeSubtab === 'usdt') renderUsdtView(site, monthKey, metrics);
+      if (state.activeSubtab === 'dong') renderDongView(site, monthKey, metrics);
     }
 
     function renderDailyView(site, monthKey, metrics) {
+      const kpiGrid = document.getElementById('dailyKpiGrid');
+      kpiGrid.innerHTML = `
+        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
+          <div class="text-xs font-bold text-[#7A686A]">Sisa Saldo USDT (${escapeHtml(site.name)})</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtUsd(metrics.remainingUsdt)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">Stok: ${fmtUsd(metrics.totalStockUsdt)} • Topup + TRX: ${fmtUsd(metrics.totalAllTopupWithTrxUsdt)}</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
+          <div class="text-xs font-bold text-[#7A686A]">Sisa Saldo Dong</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#8E4A55] tabular-nums mt-1">${fmtInt(metrics.remainingDong)} ₫</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">Masuk: ${fmtInt(metrics.totalDongIn)} ₫ • Spend: ${fmtInt(metrics.dailySpendDong)} ₫</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
+          <div class="text-xs font-bold text-[#7A686A]">Modal Spend Bulanan</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtIdr(metrics.totalModalSpendIdr)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">Kurs Avg: ${fmtIdr(metrics.avgUsdtRateIdr)}/$</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
+          <div class="text-xs font-bold text-[#7A686A]">Regist | DP | Lock</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtInt(metrics.totalRegist)} | ${fmtInt(metrics.totalDpCount)} | ${fmtInt(metrics.totalLockCount)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">TTL DP: ${fmtIdr(metrics.totalDpAmountIdr)} • Cost/DP: ${fmtIdr(metrics.costPerDp)}</div>
+        </div>
+      `;
+
       const monthName = MONTHS_ID[state.selectedMonth];
       document.getElementById('dailyTableTitle').textContent = `Buku Harian ${site.name} (${monthName} ${state.selectedYear})`;
       document.getElementById('dailyActiveDaysBadge').textContent = `${metrics.activeDaysCount} Hari Terisi`;
 
-      document.getElementById('dailyKpiGrid').innerHTML = `
-        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Sisa Saldo USDT (${escHtml(site.name)})</div>
-          <div class="text-2xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtUsdt(metrics.remainingUsdt)}</div>
-          <div class="text-[11px] font-bold text-[#8E4A55] mt-1">Stok: ${fmtUsdt(metrics.totalUsdtStock, 0)} • Topup + TRX: ${fmtUsdt(metrics.totalTopupUsdt + metrics.totalTopupTrxFee)}</div>
-        </div>
-        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Sisa Saldo Dong</div>
-          <div class="text-2xl font-extrabold text-[#8E4A55] tabular-nums mt-1">${fmtDong(metrics.remainingDong)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Masuk: ${fmtDong(metrics.totalDongAvailable)} • Spend: ${fmtDong(metrics.totalSpendDong)}</div>
-        </div>
-        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Modal Spend Bulanan</div>
-          <div class="text-2xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtIdr(metrics.totalSpendModalIdr)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Kurs Avg: ${fmtIdr(metrics.avgUsdtRateIdr)}/$</div>
-        </div>
-        <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Regist | DP | Lock</div>
-          <div class="text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtInt(metrics.totalRegist)} | ${fmtInt(metrics.totalDpCount)} | ${fmtInt(metrics.totalLock)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Nominal DP: ${fmtIdr(metrics.totalDpIdr)} • Cost/DP: ${fmtIdr(metrics.costPerDpIdr)}</div>
-        </div>
-      `;
-
       const m = ensureMonthData(site, monthKey);
-      const daysInMonth = getDaysInMonth(state.selectedYear, state.selectedMonth);
+      const totalDays = getDaysInMonth(state.selectedYear, state.selectedMonth);
       let rowsHtml = '';
 
-      for (let d = 1; d <= daysInMonth; d++) {
-        const isoDate = `${state.selectedYear}-${String(state.selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const day = m.days[isoDate];
-        let dayCleanTopup = 0;
-        let dayTotalTopup = 0;
-        let dayAgentFee = 0;
-        let dayTrx = 0;
-        const agentNames = [];
+      for (let d = 1; d <= totalDays; d++) {
+        const dStr = `${monthKey}-${String(d).padStart(2, '0')}`;
+        const day = m.days[dStr];
+        let cleanUsdt = 0;
+        let agentFeeUsdt = 0;
+        let trxFeeUsdt = 0;
+        let totalAllUsdt = 0;
+        const agentLabels = [];
 
         if (day && Array.isArray(day.agents)) {
-          day.agents.forEach((ag) => {
+          day.agents.forEach((ag, idx) => {
             const c = computeAgentTopup(ag);
-            dayCleanTopup += c.cleanUsdt;
-            dayTotalTopup += c.grossUsdt;
-            dayAgentFee += c.agentFeeUsdt;
-            dayTrx += c.trxFee;
-            if (c.cleanUsdt > 0) agentNames.push(`${ag.name || 'Agen'} ($${c.cleanUsdt.toLocaleString('en-US', { maximumFractionDigits: 2 })})`);
+            cleanUsdt += c.cleanUsdt;
+            agentFeeUsdt += c.agentFeeUsdt;
+            trxFeeUsdt += c.trxFee;
+            totalAllUsdt += c.totalAllUsdt;
+            if (c.cleanUsdt > 0) {
+              agentLabels.push(`${escapeHtml(ag.name || `Agen ${idx + 1}`)} ($${c.cleanUsdt})`);
+            }
           });
         }
 
-        const spDong = day ? Math.max(0, parseNum(day.spendDong)) : 0;
         const reg = day ? Math.max(0, parseNum(day.registCount)) : 0;
         const dpC = day ? Math.max(0, parseNum(day.dpCount)) : 0;
-        const lck = day ? Math.max(0, parseNum(day.lockCount)) : 0;
+        const lkC = day ? Math.max(0, parseNum(day.lockCount)) : 0;
         const dpIdr = day ? Math.max(0, parseNum(day.dpAmountIdr)) : 0;
-        const dayTotalWithTrx = dayTotalTopup + dayTrx;
-        const modalSpendIdr = dayTotalWithTrx * metrics.avgUsdtRateIdr;
-        const costPerDp = reg > 0 ? modalSpendIdr / reg : 0;
-
-        const hasData = dayCleanTopup > 0 || dayTotalWithTrx > 0 || dayAgentFee > 0 || dayTrx > 0 || spDong > 0 || reg > 0 || dpC > 0 || lck > 0 || dpIdr > 0;
-        const rowBg = hasData ? 'bg-white hover:bg-[#FAF6F2]' : 'bg-[#FAF6F2]/40 hover:bg-[#FAF6F2] text-[#7A686A]';
+        const modalSpendIdr = totalAllUsdt * metrics.avgUsdtRateIdr;
+        const costPerDp = reg > 0 ? (modalSpendIdr / reg) : 0;
+        const hasData = totalAllUsdt > 0 || reg > 0 || dpC > 0 || lkC > 0 || dpIdr > 0;
 
         rowsHtml += `
-          <tr class="${rowBg} transition">
-            <td class="py-2.5 px-4 font-bold whitespace-nowrap">
-              <div class="text-[#3D2C2E]">${formatDisplayDate(isoDate)}</div>
-              ${agentNames.length ? `<div class="text-[11px] font-semibold text-[#8E4A55]">${escHtml(agentNames.join(', '))}</div>` : ''}
+          <tr class="hover:bg-[#FAF6F2]/80 transition">
+            <td class="py-3 px-4">
+              <div class="font-bold text-[#3D2C2E]">${formatDisplayDate(dStr)}</div>
+              ${agentLabels.length > 0 ? `<div class="text-[11px] font-semibold text-[#8E4A55] mt-0.5">${agentLabels.join(', ')}</div>` : ''}
             </td>
-            <td class="py-2.5 px-3 text-right font-extrabold tabular-nums ${dayTotalWithTrx > 0 ? 'text-[#8E4A55]' : ''}">${dayTotalWithTrx > 0 ? fmtUsdt(dayTotalWithTrx) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-extrabold tabular-nums ${dayCleanTopup > 0 ? 'text-[#3D2C2E]' : ''}">${dayCleanTopup > 0 ? fmtUsdt(dayCleanTopup) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dayAgentFee > 0 ? 'text-[#8E4A55]' : ''}">${dayAgentFee > 0 ? fmtUsdt(dayAgentFee) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dayTrx > 0 ? 'text-[#BE123C]' : ''}">${dayTrx > 0 ? fmtUsdt(-dayTrx) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${modalSpendIdr > 0 ? 'text-[#8E4A55]' : ''}">${modalSpendIdr > 0 ? fmtIdr(modalSpendIdr) : '-'}</td>
-            <td class="py-2.5 px-3 text-center font-extrabold tabular-nums">
-              <span>${fmtInt(reg)}</span> | <span class="text-[#15803D]">${fmtInt(dpC)}</span> | <span class="text-[#BE123C]">${fmtInt(lck)}</span>
+            <td class="py-3 px-3 text-right font-extrabold text-[#3D2C2E] tabular-nums">${totalAllUsdt > 0 ? fmtUsd(totalAllUsdt) : '-'}</td>
+            <td class="py-3 px-3 text-right font-bold text-[#15803D] tabular-nums">${cleanUsdt > 0 ? fmtUsd(cleanUsdt) : '-'}</td>
+            <td class="py-3 px-3 text-right font-bold text-[#8E4A55] tabular-nums">${agentFeeUsdt > 0 ? fmtUsd(agentFeeUsdt) : '-'}</td>
+            <td class="py-3 px-3 text-right font-bold text-[#BE123C] tabular-nums">${trxFeeUsdt > 0 ? '-' + fmtUsd(trxFeeUsdt) : '-'}</td>
+            <td class="py-3 px-3 text-right font-bold text-[#8E4A55] tabular-nums">${modalSpendIdr > 0 ? fmtIdr(modalSpendIdr) : '-'}</td>
+            <td class="py-3 px-3 text-center font-bold tabular-nums">
+              <span class="text-[#3D2C2E]">${fmtInt(reg)}</span> | <span class="text-[#15803D]">${fmtInt(dpC)}</span> | <span class="text-[#BE123C]">${fmtInt(lkC)}</span>
             </td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums ${dpIdr > 0 ? 'text-[#15803D]' : ''}">${dpIdr > 0 ? fmtIdr(dpIdr) : '-'}</td>
-            <td class="py-2.5 px-3 text-right font-bold tabular-nums">${costPerDp > 0 ? fmtIdr(costPerDp) : '-'}</td>
-            <td class="py-2.5 px-4 text-center">
-              <button type="button" data-edit-day="${isoDate}" class="px-3 py-1 rounded-full ${hasData ? 'bg-[#F7ECEE] text-[#8E4A55] border border-[#E5C9CE]' : 'bg-white text-[#7A686A] border border-[#E8D8D0]'} hover:bg-[#B76E79] hover:text-white text-xs font-extrabold transition">
+            <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">${dpIdr > 0 ? fmtIdr(dpIdr) : '-'}</td>
+            <td class="py-3 px-3 text-right font-bold text-[#3D2C2E] tabular-nums">${costPerDp > 0 ? fmtIdr(costPerDp) : '-'}</td>
+            <td class="py-3 px-4 text-center">
+              <button type="button" data-open-day-modal="${dStr}" class="px-3 py-1 rounded-full text-xs font-extrabold transition ${hasData ? 'bg-[#F7ECEE] hover:bg-[#EFE0E3] text-[#8E4A55]' : 'bg-[#FAF6F2] hover:bg-[#EFE3DC] border border-[#E8D8D0] text-[#7A686A]'}">
                 ${hasData ? 'Edit' : '+ Isi'}
               </button>
             </td>
@@ -1221,16 +1196,16 @@
       document.getElementById('dailyTableBody').innerHTML = rowsHtml;
       document.getElementById('dailyTableFoot').innerHTML = `
         <tr>
-          <td class="py-3 px-4 text-[#8E4A55]">TOTAL BULAN INI</td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#8E4A55]">${fmtUsdt(metrics.totalAllTopupWithTrxUsdt)}</td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#3D2C2E]">${fmtUsdt(metrics.totalCleanTopupUsdt)}</td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#8E4A55]">${fmtUsdt(metrics.totalAgentFeeUsdt)}</td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#BE123C]">${fmtUsdt(-metrics.totalTopupTrxFee)}</td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#8E4A55]">${fmtIdr(metrics.totalSpendModalIdr)}</td>
-          <td class="py-3 px-3 text-center tabular-nums">${fmtInt(metrics.totalRegist)} | <span class="text-[#15803D]">${fmtInt(metrics.totalDpCount)}</span> | <span class="text-[#BE123C]">${fmtInt(metrics.totalLock)}</span></td>
-          <td class="py-3 px-3 text-right tabular-nums text-[#15803D]">${fmtIdr(metrics.totalDpIdr)}</td>
-          <td class="py-3 px-3 text-right tabular-nums">${fmtIdr(metrics.costPerDpIdr)}</td>
-          <td class="py-3 px-4 text-center text-xs text-[#7A686A]">-</td>
+          <td class="py-3.5 px-4 text-[#8E4A55]">TOTAL BULAN INI</td>
+          <td class="py-3.5 px-3 text-right text-[#3D2C2E] tabular-nums">${fmtUsd(metrics.totalAllTopupWithTrxUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#15803D] tabular-nums">${fmtUsd(metrics.dailyCleanTopupUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#8E4A55] tabular-nums">${fmtUsd(metrics.dailyAgentFeeUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#BE123C] tabular-nums">-${fmtUsd(metrics.dailyTrxFeeUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#8E4A55] tabular-nums">${fmtIdr(metrics.totalModalSpendIdr)}</td>
+          <td class="py-3.5 px-3 text-center tabular-nums">${fmtInt(metrics.totalRegist)} | ${fmtInt(metrics.totalDpCount)} | ${fmtInt(metrics.totalLockCount)}</td>
+          <td class="py-3.5 px-3 text-right text-[#15803D] tabular-nums">${fmtIdr(metrics.totalDpAmountIdr)}</td>
+          <td class="py-3.5 px-3 text-right text-[#3D2C2E] tabular-nums">${fmtIdr(metrics.costPerDp)}</td>
+          <td class="py-3.5 px-4"></td>
         </tr>
       `;
     }
@@ -1238,475 +1213,378 @@
     function renderUsdtView(site, monthKey, metrics) {
       const m = ensureMonthData(site, monthKey);
       const monthName = MONTHS_ID[state.selectedMonth];
-      const prevMonthIdx = state.selectedMonth === 0 ? 11 : state.selectedMonth - 1;
-      const prevYear = state.selectedMonth === 0 ? state.selectedYear - 1 : state.selectedYear;
-
-      document.getElementById('usdtCarryTitle').textContent = `SS Saldo USDT Bulan Lalu (${MONTHS_ID[prevMonthIdx]} ${prevYear})`;
-      document.getElementById('inputUsdtCarryAmount').value = m.usdtCarryOver.amount ? String(m.usdtCarryOver.amount) : '';
-      document.getElementById('inputUsdtCarryRate').value = m.usdtCarryOver.rateIdr ? fmtInt(m.usdtCarryOver.rateIdr) : '';
-
+      document.getElementById('usdtCarryTitle').textContent = `Sisa Saldo USDT Carry-Over (${site.name} — ${monthName} ${state.selectedYear})`;
+      document.getElementById('inputUsdtCarryAmount').value = m.usdtCarryOver.amount || '';
+      document.getElementById('inputUsdtCarryRate').value = m.usdtCarryOver.rateIdr || '';
       document.getElementById('usdtPurchaseFormTitle').textContent = `Catat Pembelian USDT Bulan Ini (${monthName} ${state.selectedYear})`;
-      const pDateEl = document.getElementById('purchaseDate');
-      if (!pDateEl.value || !pDateEl.value.startsWith(monthKey)) {
-        pDateEl.value = `${monthKey}-01`;
-      }
-      updatePurchasePreviewBadge();
-
       document.getElementById('usdtLedgerTitle').textContent = `Riwayat Pembelian USDT, Pemakaian Topup & Fee TRX (${site.name})`;
+
+      const pDateEl = document.getElementById('purchaseDate');
+      if (pDateEl && !pDateEl.value) pDateEl.value = `${monthKey}-01`;
+
       document.getElementById('usdtLedgerSummaryBadges').innerHTML = `
-        <span class="text-[#8E4A55]">Pemakaian Topup: ${fmtUsdt(metrics.totalTopupUsdt)}</span>
-        <span class="text-[#BE123C]">Potongan Fee TRX: ${fmtUsdt(-metrics.totalAllTrxFee)}</span>
-        <span class="text-[#15803D]">Sisa Saldo: ${fmtUsdt(metrics.remainingUsdt)}</span>
+        <span class="px-3 py-1 rounded-full bg-[#DCFCE7] text-[#15803D]">Stok Masuk: ${fmtUsd(metrics.totalStockUsdt)}</span>
+        <span class="px-3 py-1 rounded-full bg-[#F7ECEE] text-[#8E4A55]">Topup Agen: -${fmtUsd(metrics.dailyGrossTopupUsdt)}</span>
+        <span class="px-3 py-1 rounded-full bg-[#FFE4E6] text-[#BE123C]">Fee TRX: -${fmtUsd(metrics.totalTrxFeeUsdt)}</span>
+        <span class="px-3 py-1 rounded-full bg-[#3D2C2E] text-white">Sisa Saldo: ${fmtUsd(metrics.remainingUsdt)}</span>
       `;
 
-      const events = [];
-      m.purchases.forEach((p) => {
-        events.push({
-          date: p.date,
-          order: p.isStandaloneTrx ? 2 : 1,
-          type: p.isStandaloneTrx ? 'standalone_trx' : 'purchase',
-          data: p
-        });
-      });
-
-      Object.keys(m.days).sort().forEach((dKey) => {
-        const day = m.days[dKey];
-        if (!day || !Array.isArray(day.agents)) return;
-        day.agents.forEach((ag) => {
-          const c = computeAgentTopup(ag);
-          if (c.grossUsdt > 0 || c.trxFee > 0) {
-            events.push({
-              date: dKey,
-              order: 3,
-              type: 'daily_topup',
-              agentName: ag.name || 'Agen',
-              topupUsdt: c.grossUsdt,
-              trxFee: c.trxFee
-            });
-          }
-        });
-      });
-
-      events.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
-
-      let rowsHtml = '';
-      if (metrics.carryUsdt > 0 || metrics.carryRateIdr > 0) {
-        rowsHtml += `
+      let rows = '';
+      if (metrics.carryUsdt > 0) {
+        rows += `
           <tr class="bg-[#FAF6F2]/70">
-            <td class="py-3 px-4 font-extrabold text-[#8E4A55]">Carry-Over</td>
-            <td class="py-3 px-4 font-bold text-[#3D2C2E]">SS Saldo USDT Bulan Lalu (${MONTHS_ID[prevMonthIdx]} ${prevYear})</td>
-            <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtUsdt(metrics.carryUsdt)}</td>
+            <td class="py-3 px-4 font-bold text-[#7A686A]">01 ${monthName.slice(0, 3)} ${state.selectedYear}</td>
+            <td class="py-3 px-4 font-bold text-[#8E4A55]">SS Saldo USDT Bulan Lalu</td>
+            <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtUsd(metrics.carryUsdt)}</td>
             <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
             <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-            <td class="py-3 px-3 text-right font-bold text-[#8E4A55] tabular-nums">${fmtIdr(metrics.carryRateIdr)}</td>
-            <td class="py-3 px-3 text-right font-bold tabular-nums">${fmtIdr(metrics.carryIdr)}</td>
-            <td class="py-3 px-4 text-center text-xs font-bold text-[#7A686A]">SS Awal</td>
+            <td class="py-3 px-3 text-right font-bold text-[#7A686A] tabular-nums">${fmtIdr(metrics.carryRate)}/$</td>
+            <td class="py-3 px-3 text-right font-bold text-[#3D2C2E] tabular-nums">${fmtIdr(metrics.carryIdr)}</td>
+            <td class="py-3 px-4 text-center text-xs text-[#7A686A]">Carry-Over</td>
           </tr>
         `;
       }
 
-      events.forEach((ev) => {
-        if (ev.type === 'purchase') {
-          const p = ev.data;
-          const gross = parseNum(p.grossUsdt);
-          const trx = parseNum(p.trxFeeUsdt);
-          const net = Math.max(0, gross - trx);
-          const idr = parseNum(p.idrTotal);
-          const effRate = net > 0 ? idr / net : 0;
-          rowsHtml += `
-            <tr class="hover:bg-[#FAF6F2]">
-              <td class="py-3 px-4 font-bold whitespace-nowrap">${formatDisplayDate(p.date)}</td>
-              <td class="py-3 px-4">
-                <div class="font-extrabold text-[#3D2C2E]">${escHtml(p.source || 'Pembelian USDT')}</div>
-              </td>
-              <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtUsdt(net)}</td>
-              <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-              <td class="py-3 px-3 text-right font-bold text-[#BE123C] tabular-nums">${trx > 0 ? fmtUsdt(-trx) : '-'}</td>
-              <td class="py-3 px-3 text-right font-bold text-[#8E4A55] tabular-nums">${fmtIdr(effRate)}</td>
-              <td class="py-3 px-3 text-right font-extrabold tabular-nums">${fmtIdr(idr)}</td>
+      m.purchases.forEach((p) => {
+        if (p.type === 'trx_only') {
+          const fee = Math.max(0, parseNum(p.trxFeeUsdt));
+          rows += `
+            <tr>
+              <td class="py-3 px-4 font-bold">${formatDisplayDate(p.date)}</td>
+              <td class="py-3 px-4 font-bold text-[#BE123C]">${escapeHtml(p.note || 'Fee TRX Terpisah')}</td>
+              <td class="py-3 px-3 text-right">-</td>
+              <td class="py-3 px-3 text-right">-</td>
+              <td class="py-3 px-3 text-right font-extrabold text-[#BE123C] tabular-nums">-${fmtUsd(fee)}</td>
+              <td class="py-3 px-3 text-right text-xs text-[#7A686A]">Potong Saldo</td>
+              <td class="py-3 px-3 text-right">-</td>
               <td class="py-3 px-4 text-center">
-                <button type="button" data-delete-purchase="${escHtml(p.id)}" class="text-xs font-extrabold text-[#BE123C] hover:underline">Hapus</button>
+                <button type="button" data-delete-purchase="${p.id}" class="text-xs font-extrabold text-[#BE123C] hover:underline">Hapus</button>
               </td>
             </tr>
           `;
-        } else if (ev.type === 'standalone_trx') {
-          const p = ev.data;
-          const trx = parseNum(p.trxFeeUsdt);
-          rowsHtml += `
-            <tr class="hover:bg-[#FAF6F2]">
-              <td class="py-3 px-4 font-bold whitespace-nowrap">${formatDisplayDate(p.date)}</td>
-              <td class="py-3 px-4">
-                <div class="font-extrabold text-[#BE123C]">${escHtml(p.source || 'Fee TRX Terpisah')}</div>
-              </td>
-              <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-              <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-              <td class="py-3 px-3 text-right font-extrabold text-[#BE123C] tabular-nums">${fmtUsdt(-trx)}</td>
-              <td class="py-3 px-3 text-right text-xs font-bold text-[#7A686A]">Fee Wallet</td>
-              <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
+        } else {
+          const gross = Math.max(0, parseNum(p.usdtGross));
+          const idr = Math.max(0, parseNum(p.idrTotal));
+          const rate = gross > 0 ? idr / gross : 0;
+          rows += `
+            <tr>
+              <td class="py-3 px-4 font-bold">${formatDisplayDate(p.date)}</td>
+              <td class="py-3 px-4 font-bold text-[#3D2C2E]">Beli USDT${p.source ? ' • ' + escapeHtml(p.source) : ''}</td>
+              <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtUsd(gross)}</td>
+              <td class="py-3 px-3 text-right">-</td>
+              <td class="py-3 px-3 text-right">-</td>
+              <td class="py-3 px-3 text-right font-bold text-[#7A686A] tabular-nums">${fmtIdr(rate)}/$</td>
+              <td class="py-3 px-3 text-right font-extrabold text-[#3D2C2E] tabular-nums">${fmtIdr(idr)}</td>
               <td class="py-3 px-4 text-center">
-                <button type="button" data-delete-purchase="${escHtml(p.id)}" class="text-xs font-extrabold text-[#BE123C] hover:underline">Hapus</button>
-              </td>
-            </tr>
-          `;
-        } else if (ev.type === 'daily_topup') {
-          rowsHtml += `
-            <tr class="hover:bg-[#FAF6F2]">
-              <td class="py-3 px-4 font-bold whitespace-nowrap">${formatDisplayDate(ev.date)}</td>
-              <td class="py-3 px-4">
-                <div class="font-extrabold text-[#3D2C2E]">Topup Agen — ${escHtml(ev.agentName)}</div>
-              </td>
-              <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-              <td class="py-3 px-3 text-right font-extrabold text-[#8E4A55] tabular-nums">-${fmtUsdt(ev.topupUsdt)}</td>
-              <td class="py-3 px-3 text-right font-extrabold text-[#BE123C] tabular-nums">${ev.trxFee > 0 ? fmtUsdt(-ev.trxFee) : '-'}</td>
-              <td class="py-3 px-3 text-right text-xs font-bold text-[#8E4A55]">Tab Harian</td>
-              <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-              <td class="py-3 px-4 text-center">
-                <button type="button" data-edit-day="${ev.date}" class="px-2.5 py-1 rounded-full bg-[#FAF6F2] border border-[#E8D8D0] text-[11px] font-bold text-[#7A686A] hover:text-[#8E4A55]">Dari Tab Harian</button>
+                <button type="button" data-delete-purchase="${p.id}" class="text-xs font-extrabold text-[#BE123C] hover:underline">Hapus</button>
               </td>
             </tr>
           `;
         }
       });
 
-      if (!rowsHtml) {
-        rowsHtml = `<tr><td colspan="8" class="py-8 text-center text-xs sm:text-sm font-bold text-[#7A686A]">Belum ada data pembelian USDT atau pemakaian topup di bulan ini.</td></tr>`;
+      Object.keys(m.days).sort().forEach((dKey) => {
+        const day = m.days[dKey];
+        let grossDay = 0;
+        let trxDay = 0;
+        (day.agents || []).forEach((ag) => {
+          const c = computeAgentTopup(ag);
+          grossDay += c.grossUsdt;
+          trxDay += c.trxFee;
+        });
+        if (grossDay > 0 || trxDay > 0) {
+          rows += `
+            <tr class="bg-[#FAF6F2]/40">
+              <td class="py-3 px-4 font-bold">${formatDisplayDate(dKey)}</td>
+              <td class="py-3 px-4 font-semibold text-[#7A686A]">Pemakaian Topup Harian (${escapeHtml(site.name)})</td>
+              <td class="py-3 px-3 text-right">-</td>
+              <td class="py-3 px-3 text-right font-extrabold text-[#8E4A55] tabular-nums">-${fmtUsd(grossDay)}</td>
+              <td class="py-3 px-3 text-right font-bold text-[#BE123C] tabular-nums">${trxDay > 0 ? '-' + fmtUsd(trxDay) : '-'}</td>
+              <td class="py-3 px-3 text-right text-xs text-[#7A686A]">Auto Harian</td>
+              <td class="py-3 px-3 text-right">-</td>
+              <td class="py-3 px-4 text-center">
+                <button type="button" data-open-day-modal="${dKey}" class="text-xs font-extrabold text-[#8E4A55] hover:underline">Edit</button>
+              </td>
+            </tr>
+          `;
+        }
+      });
+
+      if (!rows) {
+        rows = `<tr><td colspan="8" class="py-8 text-center text-xs font-bold text-[#7A686A]">Belum ada mutasi pembelian USDT atau pemakaian bulan ini.</td></tr>`;
       }
 
-      document.getElementById('usdtLedgerBody').innerHTML = rowsHtml;
+      document.getElementById('usdtLedgerBody').innerHTML = rows;
       document.getElementById('usdtLedgerFoot').innerHTML = `
         <tr>
-          <td colspan="2" class="py-3.5 px-4 text-[#8E4A55]">RINGKASAN SALDO USDT AKURAT</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#15803D]">Stok: ${fmtUsdt(metrics.totalUsdtStock)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#8E4A55]">Topup: -${fmtUsdt(metrics.totalTopupUsdt)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#BE123C]">TRX: ${fmtUsdt(-metrics.totalAllTrxFee)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#8E4A55]">Avg: ${fmtIdr(metrics.avgUsdtRateIdr)}/$</td>
-          <td class="py-3.5 px-3 text-right tabular-nums">${fmtIdr(metrics.totalUsdtCostIdr)}</td>
-          <td class="py-3.5 px-4 text-center tabular-nums text-[#15803D]">Sisa: ${fmtUsdt(metrics.remainingUsdt)}</td>
+          <td colspan="2" class="py-3.5 px-4 text-[#8E4A55]">SISA SALDO USDT AKHIR</td>
+          <td class="py-3.5 px-3 text-right text-[#15803D] tabular-nums">${fmtUsd(metrics.totalStockUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#8E4A55] tabular-nums">-${fmtUsd(metrics.dailyGrossTopupUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#BE123C] tabular-nums">-${fmtUsd(metrics.totalTrxFeeUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#3D2C2E] tabular-nums">Sisa: ${fmtUsd(metrics.remainingUsdt)}</td>
+          <td class="py-3.5 px-3 text-right text-[#3D2C2E] tabular-nums">${fmtIdr(metrics.totalStockIdr)}</td>
+          <td class="py-3.5 px-4"></td>
         </tr>
       `;
     }
 
     function renderDongView(site, monthKey, metrics) {
       const m = ensureMonthData(site, monthKey);
-      const prevMonthIdx = state.selectedMonth === 0 ? 11 : state.selectedMonth - 1;
-      const prevYear = state.selectedMonth === 0 ? state.selectedYear - 1 : state.selectedYear;
-
-      document.getElementById('dongCarryTitle').textContent = `SS Saldo Dong Bulan Lalu (${MONTHS_ID[prevMonthIdx]} ${prevYear})`;
-      document.getElementById('inputDongCarryAmount').value = m.dongCarryOver.amount ? fmtInt(m.dongCarryOver.amount) : '';
+      const monthName = MONTHS_ID[state.selectedMonth];
+      document.getElementById('dongCarryTitle').textContent = `Sisa Saldo Dong Carry-Over (${site.name} — ${monthName} ${state.selectedYear})`;
+      document.getElementById('inputDongCarryAmount').value = m.dongCarryOver.amount || '';
+      document.getElementById('dongLedgerTitle').textContent = `Mutasi Saldo & Pemakaian Dong (${site.name})`;
 
       document.getElementById('dongKpiGrid').innerHTML = `
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">SS Dong Bulan Lalu</div>
-          <div class="text-xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtDong(metrics.carryDong)}</div>
+          <div class="text-xs font-bold text-[#7A686A]">SS Saldo Dong Bulan Lalu</div>
+          <div class="text-xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtInt(metrics.carryDong)} ₫</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Dong Diterima dari Topup</div>
-          <div class="text-xl font-extrabold text-[#15803D] tabular-nums mt-1">+${fmtDong(metrics.totalDongReceived)}</div>
+          <div class="text-xs font-bold text-[#7A686A]">Dong Masuk Topup Bulan Ini</div>
+          <div class="text-xl font-extrabold text-[#15803D] tabular-nums mt-1">+${fmtInt(metrics.dailyDongReceived)} ₫</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Total Pemakaian Spend Dong</div>
-          <div class="text-xl font-extrabold text-[#BE123C] tabular-nums mt-1">-${fmtDong(metrics.totalSpendDong)}</div>
+          <div class="text-xs font-bold text-[#7A686A]">Total Spend Dong</div>
+          <div class="text-xl font-extrabold text-[#BE123C] tabular-nums mt-1">-${fmtInt(metrics.dailySpendDong)} ₫</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Sisa Dompet Dong Akurat</div>
-          <div class="text-xl font-extrabold text-[#8E4A55] tabular-nums mt-1">${fmtDong(metrics.remainingDong)}</div>
+          <div class="text-xs font-bold text-[#7A686A]">Sisa Saldo Dong Akhir</div>
+          <div class="text-xl font-extrabold text-[#8E4A55] tabular-nums mt-1">${fmtInt(metrics.remainingDong)} ₫</div>
         </div>
       `;
 
       let runningDong = metrics.carryDong;
-      let rowsHtml = '';
-
+      let rows = '';
       if (metrics.carryDong > 0) {
-        rowsHtml += `
+        rows += `
           <tr class="bg-[#FAF6F2]/70">
-            <td class="py-3 px-4 font-extrabold text-[#8E4A55]">Carry-Over</td>
-            <td class="py-3 px-4 font-bold">SS Saldo Dong Bulan Lalu (${MONTHS_ID[prevMonthIdx]} ${prevYear})</td>
-            <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtDong(metrics.carryDong)}</td>
-            <td class="py-3 px-3 text-right text-[#7A686A]">-</td>
-            <td class="py-3 px-3 text-right font-extrabold tabular-nums">${fmtDong(runningDong)}</td>
-            <td class="py-3 px-4 text-right font-bold tabular-nums">${fmtIdr(metrics.carryDong * metrics.effectiveIdrPerDong)}</td>
+            <td class="py-3 px-4 font-bold text-[#7A686A]">01 ${monthName.slice(0, 3)} ${state.selectedYear}</td>
+            <td class="py-3 px-4 font-bold text-[#8E4A55]">SS Saldo Dong Bulan Lalu</td>
+            <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">+${fmtInt(metrics.carryDong)} ₫</td>
+            <td class="py-3 px-3 text-right">-</td>
+            <td class="py-3 px-3 text-right font-extrabold text-[#3D2C2E] tabular-nums">${fmtInt(runningDong)} ₫</td>
+            <td class="py-3 px-4 text-right text-[#7A686A]">Carry-Over</td>
           </tr>
         `;
       }
 
       Object.keys(m.days).sort().forEach((dKey) => {
         const day = m.days[dKey];
-        if (!day) return;
-        let dongIn = 0;
-        const labels = [];
-        (day.agents || []).forEach((ag) => {
+        let dIn = 0;
+        let totalUsdt = 0;
+        const notes = [];
+        (day.agents || []).forEach((ag, idx) => {
           const c = computeAgentTopup(ag);
-          dongIn += c.dongReceived;
-          if (c.dongReceived > 0) labels.push(ag.name || 'Agen');
+          dIn += c.dongReceived;
+          totalUsdt += c.totalAllUsdt;
+          if (c.dongReceived > 0) {
+            notes.push(`${escapeHtml(ag.name || `Agen ${idx + 1}`)} ($${c.cleanUsdt} × ${fmtInt(c.dongRate)})`);
+          }
         });
-        const spDong = Math.max(0, parseNum(day.spendDong));
-        if (dongIn <= 0 && spDong <= 0) return;
-
-        runningDong = runningDong + dongIn - spDong;
-        rowsHtml += `
-          <tr class="hover:bg-[#FAF6F2]">
-            <td class="py-3 px-4 font-bold whitespace-nowrap">${formatDisplayDate(dKey)}</td>
-            <td class="py-3 px-4 font-bold">${labels.length ? `Topup (${escHtml(labels.join(', '))}) & Spend Harian` : 'Pemakaian Spend Harian'}</td>
-            <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">${dongIn > 0 ? '+' + fmtDong(dongIn) : '-'}</td>
-            <td class="py-3 px-3 text-right font-extrabold text-[#BE123C] tabular-nums">${spDong > 0 ? '-' + fmtDong(spDong) : '-'}</td>
-            <td class="py-3 px-3 text-right font-extrabold text-[#3D2C2E] tabular-nums">${fmtDong(runningDong)}</td>
-            <td class="py-3 px-4 text-right font-bold text-[#8E4A55] tabular-nums">${fmtIdr(spDong * metrics.effectiveIdrPerDong)}</td>
-          </tr>
-        `;
+        const sp = Math.max(0, parseNum(day.spendDong));
+        if (dIn > 0 || sp > 0) {
+          runningDong += dIn - sp;
+          const modalIdr = totalUsdt * metrics.avgUsdtRateIdr;
+          rows += `
+            <tr>
+              <td class="py-3 px-4 font-bold">${formatDisplayDate(dKey)}</td>
+              <td class="py-3 px-4 font-semibold text-[#7A686A]">${notes.length > 0 ? notes.join(', ') : 'Spend Harian'}</td>
+              <td class="py-3 px-3 text-right font-extrabold text-[#15803D] tabular-nums">${dIn > 0 ? '+' + fmtInt(dIn) + ' ₫' : '-'}</td>
+              <td class="py-3 px-3 text-right font-bold text-[#BE123C] tabular-nums">${sp > 0 ? '-' + fmtInt(sp) + ' ₫' : '-'}</td>
+              <td class="py-3 px-3 text-right font-extrabold text-[#3D2C2E] tabular-nums">${fmtInt(runningDong)} ₫</td>
+              <td class="py-3 px-4 text-right font-bold text-[#8E4A55] tabular-nums">${modalIdr > 0 ? fmtIdr(modalIdr) : '-'}</td>
+            </tr>
+          `;
+        }
       });
 
-      if (!rowsHtml) {
-        rowsHtml = `<tr><td colspan="6" class="py-8 text-center text-xs sm:text-sm font-bold text-[#7A686A]">Belum ada mutasi Dong pada bulan ini.</td></tr>`;
+      if (!rows) {
+        rows = `<tr><td colspan="6" class="py-8 text-center text-xs font-bold text-[#7A686A]">Belum ada mutasi saldo Dong bulan ini.</td></tr>`;
       }
 
-      document.getElementById('dongLedgerBody').innerHTML = rowsHtml;
+      document.getElementById('dongLedgerBody').innerHTML = rows;
       document.getElementById('dongLedgerFoot').innerHTML = `
         <tr>
           <td colspan="2" class="py-3.5 px-4 text-[#8E4A55]">TOTAL &amp; SISA SALDO DONG</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#15803D]">+${fmtDong(metrics.totalDongAvailable)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#BE123C]">-${fmtDong(metrics.totalSpendDong)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#8E4A55]">${fmtDong(metrics.remainingDong)}</td>
-          <td class="py-3.5 px-4 text-right tabular-nums">${fmtIdr(metrics.totalSpendModalIdr)}</td>
+          <td class="py-3.5 px-3 text-right text-[#15803D] tabular-nums">+${fmtInt(metrics.totalDongIn)} ₫</td>
+          <td class="py-3.5 px-3 text-right text-[#BE123C] tabular-nums">-${fmtInt(metrics.dailySpendDong)} ₫</td>
+          <td class="py-3.5 px-3 text-right text-[#3D2C2E] tabular-nums">${fmtInt(metrics.remainingDong)} ₫</td>
+          <td class="py-3.5 px-4 text-right text-[#8E4A55] tabular-nums">${fmtIdr(metrics.totalModalSpendIdr)}</td>
         </tr>
       `;
     }
 
-    function renderGlobalRecapView(monthKey) {
+    function renderGlobalRecapView() {
+      const monthKey = getMonthKey();
       const monthName = MONTHS_ID[state.selectedMonth];
       document.getElementById('globalTableTitle').textContent = `Perbandingan Performa Per Site (${monthName} ${state.selectedYear})`;
 
-      let sumUsdtStock = 0;
-      let sumTopupUsdt = 0;
-      let sumAllTrx = 0;
-      let sumRemUsdt = 0;
-      let sumSpendDong = 0;
-      let sumSpendIdr = 0;
-      let sumRegist = 0;
-      let sumDpCount = 0;
-      let sumLock = 0;
-      let sumDpIdr = 0;
+      let gStock = 0, gTopup = 0, gTrx = 0, gRemUsdt = 0, gSpendDong = 0, gModalIdr = 0, gReg = 0, gDp = 0, gLock = 0, gDpIdr = 0;
+      let rows = '';
 
-      const perSite = state.sites.map((site) => {
-        const m = computeSiteMonthMetrics(site, monthKey);
-        sumUsdtStock += m.totalUsdtStock;
-        sumTopupUsdt += m.totalTopupUsdt;
-        sumAllTrx += m.totalAllTrxFee;
-        sumRemUsdt += m.remainingUsdt;
-        sumSpendDong += m.totalSpendDong;
-        sumSpendIdr += m.totalSpendModalIdr;
-        sumRegist += m.totalRegist;
-        sumDpCount += m.totalDpCount;
-        sumLock += m.totalLock;
-        sumDpIdr += m.totalDpIdr;
-        return { site, m };
+      state.sites.forEach((s) => {
+        const met = computeSiteMonthMetrics(s, monthKey);
+        gStock += met.totalStockUsdt;
+        gTopup += met.dailyGrossTopupUsdt;
+        gTrx += met.totalTrxFeeUsdt;
+        gRemUsdt += met.remainingUsdt;
+        gSpendDong += met.dailySpendDong;
+        gModalIdr += met.totalModalSpendIdr;
+        gReg += met.totalRegist;
+        gDp += met.totalDpCount;
+        gLock += met.totalLockCount;
+        gDpIdr += met.totalDpAmountIdr;
+
+        rows += `
+          <tr data-select-site="${s.id}" class="hover:bg-[#FAF6F2] cursor-pointer transition">
+            <td class="py-3.5 px-4 font-extrabold text-[#8E4A55]">${escapeHtml(s.name)}</td>
+            <td class="py-3.5 px-3 text-right font-bold tabular-nums">${fmtUsd(met.totalStockUsdt)}</td>
+            <td class="py-3.5 px-3 text-right font-bold text-[#8E4A55] tabular-nums">${fmtUsd(met.dailyGrossTopupUsdt)}</td>
+            <td class="py-3.5 px-3 text-right font-bold text-[#BE123C] tabular-nums">-${fmtUsd(met.totalTrxFeeUsdt)}</td>
+            <td class="py-3.5 px-3 text-right font-extrabold text-[#15803D] tabular-nums">${fmtUsd(met.remainingUsdt)}</td>
+            <td class="py-3.5 px-3 text-right font-bold tabular-nums">${fmtInt(met.dailySpendDong)} ₫</td>
+            <td class="py-3.5 px-3 text-right font-bold text-[#3D2C2E] tabular-nums">${fmtIdr(met.totalModalSpendIdr)}</td>
+            <td class="py-3.5 px-3 text-center font-bold tabular-nums">${fmtInt(met.totalRegist)} | ${fmtInt(met.totalDpCount)} | ${fmtInt(met.totalLockCount)}</td>
+            <td class="py-3.5 px-4 text-right font-extrabold text-[#15803D] tabular-nums">${fmtIdr(met.totalDpAmountIdr)}</td>
+          </tr>
+        `;
       });
 
+      const gCostPerDp = gReg > 0 ? (gModalIdr / gReg) : 0;
       document.getElementById('globalKpiGrid').innerHTML = `
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Total Sisa USDT Semua Site</div>
-          <div class="text-2xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtUsdt(sumRemUsdt)}</div>
-          <div class="text-[11px] font-bold text-[#8E4A55] mt-1">Stok: ${fmtUsdt(sumUsdtStock, 0)} • Topup: ${fmtUsdt(sumTopupUsdt, 0)}</div>
+          <div class="text-xs font-bold text-[#7A686A]">Total Sisa Saldo USDT</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtUsd(gRemUsdt)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">Stok: ${fmtUsd(gStock)} • Topup: ${fmtUsd(gTopup)}</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
-          <div class="text-xs font-bold text-[#7A686A]">Total Spend Bulanan (IDR)</div>
-          <div class="text-2xl font-extrabold text-[#8E4A55] tabular-nums mt-1">${fmtIdr(sumSpendIdr)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Total Spend Dong: ${fmtDong(sumSpendDong)}</div>
+          <div class="text-xs font-bold text-[#7A686A]">Total Modal Spend Global</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#3D2C2E] tabular-nums mt-1">${fmtIdr(gModalIdr)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">Fee TRX Total: ${fmtUsd(gTrx)}</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
           <div class="text-xs font-bold text-[#7A686A]">Total Regist | DP | Lock</div>
-          <div class="text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtInt(sumRegist)} | ${fmtInt(sumDpCount)} | ${fmtInt(sumLock)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">Cost / DP Global: ${fmtIdr(sumRegist > 0 ? sumSpendIdr / sumRegist : 0)}</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#8E4A55] tabular-nums mt-1">${fmtInt(gReg)} | ${fmtInt(gDp)} | ${fmtInt(gLock)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">Cost/DP Global: ${fmtIdr(gCostPerDp)}</div>
         </div>
         <div class="bg-white rounded-2xl border border-[#E8D8D0] p-4 card-shadow">
           <div class="text-xs font-bold text-[#7A686A]">Total Nominal DP Global</div>
-          <div class="text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtIdr(sumDpIdr)}</div>
-          <div class="text-[11px] font-bold text-[#7A686A] mt-1">${state.sites.length} Site Aktif</div>
+          <div class="text-xl sm:text-2xl font-extrabold text-[#15803D] tabular-nums mt-1">${fmtIdr(gDpIdr)}</div>
+          <div class="text-[11px] font-semibold text-[#7A686A] mt-1">${state.sites.length} Site Aktif</div>
         </div>
       `;
 
-      document.getElementById('globalTableBody').innerHTML = perSite.map(({ site, m }) => {
-        const sharePct = sumSpendIdr > 0 ? ((m.totalSpendModalIdr / sumSpendIdr) * 100).toFixed(1) : '0.0';
-        return `
-          <tr data-select-site="${escHtml(site.id)}" class="hover:bg-[#FAF6F2] cursor-pointer transition">
-            <td class="py-3.5 px-4 font-extrabold text-[#3D2C2E]">${escHtml(site.name)}</td>
-            <td class="py-3.5 px-3 text-right font-bold text-[#7A686A] tabular-nums">${fmtUsdt(m.totalUsdtStock, 0)}</td>
-            <td class="py-3.5 px-3 text-right font-bold tabular-nums">-${fmtUsdt(m.totalTopupUsdt, 0)}</td>
-            <td class="py-3.5 px-3 text-right font-bold text-[#BE123C] tabular-nums">${fmtUsdt(-m.totalAllTrxFee, 0)}</td>
-            <td class="py-3.5 px-3 text-right font-extrabold text-[#3D2C2E] tabular-nums">${fmtUsdt(m.remainingUsdt)}</td>
-            <td class="py-3.5 px-3 text-right font-bold text-[#3D2C2E] tabular-nums">${fmtDong(m.totalSpendDong)}</td>
-            <td class="py-3.5 px-3 text-right tabular-nums">
-              <div class="font-extrabold text-[#8E4A55]">${fmtIdr(m.totalSpendModalIdr)}</div>
-              <div class="text-[11px] font-bold text-[#7A686A]">Porsi ${sharePct}%</div>
-            </td>
-            <td class="py-3.5 px-3 text-center font-extrabold tabular-nums">
-              <span>${fmtInt(m.totalRegist)}</span> | <span class="text-[#15803D]">${fmtInt(m.totalDpCount)}</span> | <span class="text-[#BE123C]">${fmtInt(m.totalLock)}</span>
-            </td>
-            <td class="py-3.5 px-4 text-right font-extrabold text-[#15803D] tabular-nums">${fmtIdr(m.totalDpIdr)}</td>
-          </tr>
-        `;
-      }).join('');
-
+      document.getElementById('globalTableBody').innerHTML = rows;
       document.getElementById('globalTableFoot').innerHTML = `
         <tr>
-          <td class="py-3.5 px-4 text-[#8E4A55]">TOTAL SEMUA SITE</td>
-          <td class="py-3.5 px-3 text-right tabular-nums">${fmtUsdt(sumUsdtStock, 0)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums">-${fmtUsdt(sumTopupUsdt, 0)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#BE123C]">${fmtUsdt(-sumAllTrx, 0)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums">${fmtUsdt(sumRemUsdt)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums">${fmtDong(sumSpendDong)}</td>
-          <td class="py-3.5 px-3 text-right tabular-nums text-[#8E4A55]">${fmtIdr(sumSpendIdr)}</td>
-          <td class="py-3.5 px-3 text-center tabular-nums">${fmtInt(sumRegist)} | <span class="text-[#15803D]">${fmtInt(sumDpCount)}</span> | <span class="text-[#BE123C]">${fmtInt(sumLock)}</span></td>
-          <td class="py-3.5 px-4 text-right tabular-nums text-[#15803D]">${fmtIdr(sumDpIdr)}</td>
+          <td class="py-3.5 px-4 text-[#8E4A55]">GRAND TOTAL</td>
+          <td class="py-3.5 px-3 text-right tabular-nums">${fmtUsd(gStock)}</td>
+          <td class="py-3.5 px-3 text-right text-[#8E4A55] tabular-nums">${fmtUsd(gTopup)}</td>
+          <td class="py-3.5 px-3 text-right text-[#BE123C] tabular-nums">-${fmtUsd(gTrx)}</td>
+          <td class="py-3.5 px-3 text-right text-[#15803D] tabular-nums">${fmtUsd(gRemUsdt)}</td>
+          <td class="py-3.5 px-3 text-right tabular-nums">${fmtInt(gSpendDong)} ₫</td>
+          <td class="py-3.5 px-3 text-right text-[#3D2C2E] tabular-nums">${fmtIdr(gModalIdr)}</td>
+          <td class="py-3.5 px-3 text-center tabular-nums">${fmtInt(gReg)} | ${fmtInt(gDp)} | ${fmtInt(gLock)}</td>
+          <td class="py-3.5 px-4 text-right text-[#15803D] tabular-nums">${fmtIdr(gDpIdr)}</td>
         </tr>
       `;
     }
 
-    function updatePurchasePreviewBadge() {
-      const gross = Math.max(0, parseNum(document.getElementById('purchaseUsdtGross').value));
-      const idr = Math.max(0, parseNum(document.getElementById('purchaseIdrTotal').value));
-      const rate = gross > 0 ? idr / gross : 0;
-      document.getElementById('usdtLivePreviewBadge').textContent = `Bersih Masuk: ${fmtUsdt(gross)} • Kurs Efektif: ${fmtIdr(rate)}`;
-    }
-
-    function renderAll() {
-      renderPeriodSelectors();
-      renderSiteTabs();
-      const monthKey = getMonthKey();
-      const isGlobal = state.activeSiteId === 'GLOBAL';
-
-      document.getElementById('siteSubNavBar').classList.toggle('hidden', isGlobal);
-      document.getElementById('viewGlobalRecap').classList.toggle('hidden', !isGlobal);
-
-      if (isGlobal) {
-        document.getElementById('viewSubtabDaily').classList.add('hidden');
-        document.getElementById('viewSubtabUsdt').classList.add('hidden');
-        document.getElementById('viewSubtabDong').classList.add('hidden');
-        renderGlobalRecapView(monthKey);
-      } else {
-        let site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
-        state.activeSiteId = site.id;
-        const metrics = computeSiteMonthMetrics(site, monthKey);
-        renderSubTabs(site, metrics);
-        renderDailyView(site, monthKey, metrics);
-        renderUsdtView(site, monthKey, metrics);
-        renderDongView(site, monthKey, metrics);
-      }
-
-      if (window.lucide) window.lucide.createIcons();
-    }
-
-    // Modal Harian Multi-Agen
-    function openDailyModal(isoDate) {
+    function openDailyModal(dateStr) {
       const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
+      if (!site) return;
       const monthKey = getMonthKey();
       const m = ensureMonthData(site, monthKey);
-      const daysCount = getDaysInMonth(state.selectedYear, state.selectedMonth);
-
-      modalEditingDate = isoDate || `${monthKey}-01`;
-      document.getElementById('dailyModalTitle').textContent = `Catat / Edit Harian — ${site.name}`;
+      const totalDays = getDaysInMonth(state.selectedYear, state.selectedMonth);
 
       const daySel = document.getElementById('modalDaySelect');
       let opts = '';
-      for (let d = 1; d <= daysCount; d++) {
-        const dt = `${monthKey}-${String(d).padStart(2, '0')}`;
-        opts += `<option value="${dt}" ${dt === modalEditingDate ? 'selected' : ''}>${formatDisplayDate(dt)}</option>`;
+      for (let d = 1; d <= totalDays; d++) {
+        const dKey = `${monthKey}-${String(d).padStart(2, '0')}`;
+        opts += `<option value="${dKey}">${formatDisplayDate(dKey)}</option>`;
       }
       daySel.innerHTML = opts;
-      loadDayIntoModal(modalEditingDate);
+
+      modalEditingDate = dateStr || `${monthKey}-01`;
+      daySel.value = modalEditingDate;
+      document.getElementById('dailyModalTitle').textContent = `Catat / Edit Harian — ${site.name}`;
+
+      loadDayIntoModal(m.days[modalEditingDate]);
       document.getElementById('dailyModal').classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
     }
 
-    function loadDayIntoModal(isoDate) {
-      modalEditingDate = isoDate;
-      const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
-      const m = ensureMonthData(site, getMonthKey());
-      const existing = m.days[isoDate];
-
-      if (existing && Array.isArray(existing.agents) && existing.agents.length > 0) {
-        modalAgentsDraft = JSON.parse(JSON.stringify(existing.agents));
+    function loadDayIntoModal(dayObj) {
+      if (dayObj && Array.isArray(dayObj.agents) && dayObj.agents.length > 0) {
+        modalDraftAgents = dayObj.agents.map((ag, idx) => ({
+          name: ag.name || `Agen ${idx + 1}`,
+          topupUsdt: ag.topupUsdt !== undefined && ag.topupUsdt !== '' ? String(ag.topupUsdt) : '',
+          feePercent: ag.feePercent !== undefined && ag.feePercent !== '' ? String(ag.feePercent) : '',
+          trxFeeUsdt: ag.trxFeeUsdt !== undefined && ag.trxFeeUsdt !== '' ? String(ag.trxFeeUsdt) : '',
+          dongRate: ag.dongRate !== undefined && ag.dongRate !== '' ? String(ag.dongRate) : ''
+        }));
       } else {
-        modalAgentsDraft = [
-          { name: 'Agen 1', usdtTopup: '', trxFeeUsdt: '', feeType: 'percent', feeValue: '', dongRate: '' }
-        ];
+        modalDraftAgents = [{ name: 'Agen 1', topupUsdt: '', feePercent: '', trxFeeUsdt: '', dongRate: '' }];
       }
 
-      document.getElementById('modalSpendDong').value = existing && existing.spendDong ? fmtInt(existing.spendDong) : '';
-      document.getElementById('modalRegistCount').value = existing && existing.registCount ? String(existing.registCount) : '';
-      document.getElementById('modalDpCount').value = existing && existing.dpCount ? String(existing.dpCount) : '';
-      document.getElementById('modalLockCount').value = existing && existing.lockCount ? String(existing.lockCount) : '';
-      document.getElementById('modalDpAmountIdr').value = existing && existing.dpAmountIdr ? fmtInt(existing.dpAmountIdr) : '';
+      document.getElementById('modalSpendDong').value = dayObj && dayObj.spendDong ? String(dayObj.spendDong) : '';
+      document.getElementById('modalRegistCount').value = dayObj && dayObj.registCount ? String(dayObj.registCount) : '';
+      document.getElementById('modalDpCount').value = dayObj && dayObj.dpCount ? String(dayObj.dpCount) : '';
+      document.getElementById('modalLockCount').value = dayObj && dayObj.lockCount ? String(dayObj.lockCount) : '';
+      document.getElementById('modalDpAmountIdr').value = dayObj && dayObj.dpAmountIdr ? String(dayObj.dpAmountIdr) : '';
 
       renderModalAgentCards();
     }
 
-    function getAgentPreviewTexts(ag) {
-      const calc = computeAgentTopup(ag);
-      const rate = Math.max(0, parseNum(ag.dongRate));
-      const cleanStr = calc.cleanUsdt.toLocaleString('en-US', { maximumFractionDigits: 2 });
-      const pctStr = calc.feePercent.toLocaleString('en-US', { maximumFractionDigits: 2 });
-      const feeBadgeText = `$${cleanStr} + ${pctStr}% = ${fmtUsdt(calc.grossUsdt)}`;
-      const dongBadgeText = `${cleanStr} × ${fmtInt(rate)} = ${fmtDong(calc.dongReceived)}`;
-      return { feeBadgeText, dongBadgeText };
-    }
-
     function renderModalAgentCards() {
       const container = document.getElementById('modalAgentsContainer');
+      if (!container) return;
 
-      container.innerHTML = modalAgentsDraft.map((ag, idx) => {
-        const valTopup = ag.usdtTopup === 0 || ag.usdtTopup ? escHtml(ag.usdtTopup) : '';
-        const valFee = ag.feeValue === 0 || ag.feeValue ? escHtml(ag.feeValue) : '';
-        const valTrx = ag.trxFeeUsdt === 0 || ag.trxFeeUsdt ? escHtml(ag.trxFeeUsdt) : '';
-        const valRate = ag.dongRate === 0 || ag.dongRate ? escHtml(ag.dongRate) : '';
-        const { feeBadgeText, dongBadgeText } = getAgentPreviewTexts(ag);
+      container.innerHTML = modalDraftAgents.map((ag, idx) => {
+        const c = computeAgentTopup(ag);
+        const feeCalcLabel = `$${fmtInt(c.cleanUsdt)} + ${c.feePct}% = ${fmtUsd(c.grossUsdt)}`;
+        const dongCalcLabel = `${fmtInt(c.cleanUsdt)} × ${fmtInt(c.dongRate)} = ${fmtInt(c.dongReceived)} ₫`;
 
         return `
-          <div class="rounded-2xl border border-[#E8D8D0] bg-[#FAF6F2]/75 p-4 space-y-3">
+          <div class="bg-[#FAF6F2]/70 rounded-2xl border border-[#E8D8D0] p-4 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-[#8E4A55] text-white text-xs font-extrabold flex items-center justify-center">${idx + 1}</span>
-                <input type="text" data-ag-field="name" data-ag-idx="${idx}" value="${escHtml(ag.name || '')}" placeholder="Nama Agen"
-                  class="rounded-xl border border-[#E8D8D0] bg-white px-3 py-1.5 text-xs sm:text-sm font-extrabold text-[#3D2C2E] focus:outline-none focus:border-[#B76E79]" />
+                <input type="text" data-agent-field="name" data-agent-idx="${idx}" value="${escapeHtml(ag.name)}" placeholder="Nama Agen"
+                  class="rounded-xl border border-[#E8D8D0] bg-white px-3 py-1 text-xs sm:text-sm font-extrabold text-[#3D2C2E] w-40 focus:outline-none focus:border-[#B76E79]" />
               </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <span data-ag-dong-badge="${idx}" class="px-3 py-1 rounded-full bg-[#DCFCE7] border border-[#BBF7D0] text-[#15803D] text-xs font-extrabold tabular-nums">
-                  ${dongBadgeText}
+              <div class="flex items-center gap-2">
+                <span id="agentDongBadge_${idx}" class="px-3 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-extrabold tabular-nums">
+                  ${dongCalcLabel}
                 </span>
-                ${modalAgentsDraft.length > 1 ? `
-                  <button type="button" data-remove-agent="${idx}" class="p-1.5 rounded-full hover:bg-[#FFE4E6] text-[#BE123C] transition" title="Hapus Agen">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                  </button>
-                ` : ''}
+                ${modalDraftAgents.length > 1 ? `<button type="button" data-remove-agent="${idx}" class="p-1.5 rounded-full hover:bg-[#FFE4E6] text-[#BE123C] transition" title="Hapus Agen"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
               </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
-                <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Topup USDT Bersih ($)</label>
-                <input type="text" data-ag-field="usdtTopup" data-ag-idx="${idx}" value="${valTopup}" placeholder="0 / kosong"
-                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
+                <label class="block text-xs font-bold text-[#7A686A] mb-1">Topup USDT Bersih ($)</label>
+                <input type="text" data-agent-field="topupUsdt" data-agent-idx="${idx}" value="${escapeHtml(ag.topupUsdt)}" placeholder="0"
+                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
               </div>
-
               <div>
                 <div class="flex items-center justify-between gap-1 mb-1">
-                  <label class="text-[11px] font-bold text-[#7A686A]">Fee Agen (%)</label>
-                  <span data-ag-fee-badge="${idx}" class="px-2 py-0.5 rounded-full bg-[#F7ECEE] border border-[#E5C9CE] text-[10px] font-extrabold text-[#8E4A55] tabular-nums">
-                    ${feeBadgeText}
-                  </span>
+                  <label class="text-xs font-bold text-[#7A686A]">Fee Agen (%)</label>
+                  <span id="agentFeeBadge_${idx}" class="text-[11px] font-extrabold text-[#8E4A55] tabular-nums">${feeCalcLabel}</span>
                 </div>
-                <input type="text" data-ag-field="feeValue" data-ag-idx="${idx}" value="${valFee}" placeholder="0 / kosong"
-                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
+                <input type="text" data-agent-field="feePercent" data-agent-idx="${idx}" value="${escapeHtml(ag.feePercent)}" placeholder="0"
+                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#8E4A55] tabular-nums focus:outline-none focus:border-[#B76E79]" />
               </div>
-
               <div>
-                <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Fee TRX ($) <span class="text-[10px] font-normal">(Potong Saldo)</span></label>
-                <input type="text" data-ag-field="trxFeeUsdt" data-ag-idx="${idx}" value="${valTrx}" placeholder="0 / kosong"
-                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#BE123C] tabular-nums" />
+                <label class="block text-xs font-bold text-[#7A686A] mb-1">Fee TRX ($) <span class="text-[10px] font-normal">(Bebas / 0)</span></label>
+                <input type="text" data-agent-field="trxFeeUsdt" data-agent-idx="${idx}" value="${escapeHtml(ag.trxFeeUsdt)}" placeholder="0"
+                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#BE123C] tabular-nums focus:outline-none focus:border-[#B76E79]" />
               </div>
-
               <div>
-                <label class="block text-[11px] font-bold text-[#7A686A] mb-1">Kurs Dong (₫/$)</label>
-                <input type="text" data-ag-field="dongRate" data-ag-idx="${idx}" value="${valRate}" placeholder="0 / kosong"
-                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums" />
+                <label class="block text-xs font-bold text-[#7A686A] mb-1">Kurs Dong (₫/$)</label>
+                <input type="text" data-agent-field="dongRate" data-agent-idx="${idx}" value="${escapeHtml(ag.dongRate)}" placeholder="0"
+                  class="w-full rounded-xl border border-[#E8D8D0] bg-white px-3 py-2 text-sm font-bold text-[#3D2C2E] tabular-nums focus:outline-none focus:border-[#B76E79]" />
               </div>
             </div>
           </div>
@@ -1717,30 +1595,42 @@
     }
 
     function renderAccountUsersList() {
-      const listEl = document.getElementById('accountUsersList');
-      listEl.innerHTML = (state.accounts || []).map((acc, idx) => `
+      const list = document.getElementById('accountUsersList');
+      if (!list) return;
+      list.innerHTML = state.accounts.map((acc, idx) => `
         <div class="px-4 py-2.5 flex items-center justify-between bg-white text-xs sm:text-sm">
           <div>
-            <span class="font-extrabold text-[#3D2C2E]">${escHtml(acc.username)}</span>
-            <span class="ml-2 px-2 py-0.5 rounded-full bg-[#F7ECEE] text-[#8E4A55] text-[10px] font-bold">Sandi: ${escHtml(acc.password)}</span>
+            <span class="font-extrabold text-[#3D2C2E]">${escapeHtml(acc.username)}</span>
+            <span class="text-[11px] text-[#7A686A] ml-2">Sandi: ••••••</span>
           </div>
-          ${state.accounts.length > 1 ? `
-            <button type="button" data-delete-account="${idx}" class="text-xs font-extrabold text-[#BE123C] hover:underline">Hapus</button>
-          ` : '<span class="text-[11px] font-bold text-[#7A686A]">Utama</span>'}
+          ${state.accounts.length > 1 ? `<button type="button" data-delete-account="${idx}" class="text-xs font-extrabold text-[#BE123C] hover:underline">Hapus</button>` : '<span class="text-[11px] font-bold text-[#15803D]">Utama</span>'}
         </div>
       `).join('');
     }
 
-    // Event Listeners
+    function updatePurchaseLivePreview() {
+      const badge = document.getElementById('usdtLivePreviewBadge');
+      if (!badge) return;
+      const gross = Math.max(0, parseNum(document.getElementById('purchaseUsdtGross').value));
+      const idr = Math.max(0, parseNum(document.getElementById('purchaseIdrTotal').value));
+      const rate = gross > 0 ? idr / gross : 0;
+      badge.textContent = `Bersih Masuk: ${fmtUsd(gross)} • Kurs Efektif: ${fmtIdr(rate)}`;
+    }
+
+    function renderAll() {
+      renderPeriodControls();
+      renderSiteTabs();
+      renderSubnavAndViews();
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Event Listeners: Login, Forms, Inputs, Clicks
     document.getElementById('loginForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const u = document.getElementById('loginUsername').value.trim();
       const p = document.getElementById('loginPassword').value.trim();
       const errEl = document.getElementById('loginErrorMsg');
-
-      const found = (state.accounts || []).find(
-        (acc) => acc.username.toLowerCase() === u.toLowerCase() && acc.password === p
-      );
+      const found = state.accounts.find((a) => a.username.toLowerCase() === u.toLowerCase() && a.password === p);
       if (!found) {
         errEl.textContent = 'Username atau password salah.';
         errEl.classList.remove('hidden');
@@ -1764,128 +1654,112 @@
       renderAll();
     });
 
-    ['purchaseUsdtGross', 'purchaseIdrTotal'].forEach((id) => {
-      document.getElementById(id).addEventListener('input', updatePurchasePreviewBadge);
-    });
-
-    document.getElementById('usdtPurchaseForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const site = state.sites.find((s) => s.id === state.activeSiteId);
-      if (!site) return;
-      const m = ensureMonthData(site, getMonthKey());
-      const date = document.getElementById('purchaseDate').value || `${getMonthKey()}-01`;
-      const source = document.getElementById('purchaseSource').value.trim() || 'Pembelian USDT';
-      const grossUsdt = Math.max(0, parseNum(document.getElementById('purchaseUsdtGross').value));
-      const idrTotal = Math.max(0, parseNum(document.getElementById('purchaseIdrTotal').value));
-
-      if (grossUsdt <= 0) {
-        showToast('Masukkan jumlah beli USDT terlebih dahulu', 'error');
-        return;
-      }
-
-      m.purchases.push({
-        id: 'pur_' + Date.now(),
-        date,
-        source,
-        grossUsdt,
-        trxFeeUsdt: 0,
-        idrTotal,
-        isStandaloneTrx: false
-      });
-
-      document.getElementById('purchaseSource').value = '';
-      document.getElementById('purchaseUsdtGross').value = '';
-      document.getElementById('purchaseIdrTotal').value = '';
-      persistState();
-      renderAll();
-      showToast('Pembelian USDT berhasil dicatat');
-    });
-
-    document.getElementById('standaloneTrxForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const site = state.sites.find((s) => s.id === state.activeSiteId);
-      if (!site) return;
-      const m = ensureMonthData(site, getMonthKey());
-      const date = document.getElementById('trxStandaloneDate').value || `${getMonthKey()}-01`;
-      const source = document.getElementById('trxStandaloneNote').value.trim() || 'Fee TRX Terpisah';
-      const trxFeeUsdt = Math.max(0, parseNum(document.getElementById('trxStandaloneAmount').value));
-
-      if (trxFeeUsdt <= 0) {
-        showToast('Masukkan nominal Fee TRX', 'error');
-        return;
-      }
-
-      m.purchases.push({
-        id: 'trx_' + Date.now(),
-        date,
-        source,
-        grossUsdt: 0,
-        trxFeeUsdt,
-        idrTotal: 0,
-        isStandaloneTrx: true
-      });
-
-      document.getElementById('standaloneTrxModal').classList.add('hidden');
-      document.getElementById('trxStandaloneNote').value = '';
-      document.getElementById('trxStandaloneAmount').value = '';
-      persistState();
-      renderAll();
-      showToast('Fee TRX berhasil dicatat');
-    });
-
     document.getElementById('modalDaySelect').addEventListener('change', (e) => {
-      loadDayIntoModal(e.target.value);
+      modalEditingDate = e.target.value;
+      const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
+      const m = ensureMonthData(site, getMonthKey());
+      loadDayIntoModal(m.days[modalEditingDate]);
     });
 
     document.getElementById('modalAgentsContainer').addEventListener('input', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-ag-idx'), 10);
-      const field = e.target.getAttribute('data-ag-field');
-      if (isNaN(idx) || !field || !modalAgentsDraft[idx]) return;
-      modalAgentsDraft[idx][field] = e.target.value;
-      const { feeBadgeText, dongBadgeText } = getAgentPreviewTexts(modalAgentsDraft[idx]);
-      const feeEl = document.querySelector(`[data-ag-fee-badge="${idx}"]`);
-      const dongEl = document.querySelector(`[data-ag-dong-badge="${idx}"]`);
-      if (feeEl) feeEl.textContent = feeBadgeText;
-      if (dongEl) dongEl.textContent = dongBadgeText;
-    });
+      const target = e.target;
+      const idx = parseInt(target.getAttribute('data-agent-idx'), 10);
+      const field = target.getAttribute('data-agent-field');
+      if (isNaN(idx) || !field || !modalDraftAgents[idx]) return;
+      modalDraftAgents[idx][field] = target.value;
 
-    document.getElementById('modalAgentsContainer').addEventListener('change', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-ag-idx'), 10);
-      const field = e.target.getAttribute('data-ag-field');
-      if (isNaN(idx) || !field || !modalAgentsDraft[idx]) return;
-      modalAgentsDraft[idx][field] = e.target.value;
-      renderModalAgentCards();
+      const c = computeAgentTopup(modalDraftAgents[idx]);
+      const feeBadge = document.getElementById(`agentFeeBadge_${idx}`);
+      const dongBadge = document.getElementById(`agentDongBadge_${idx}`);
+      if (feeBadge) feeBadge.textContent = `$${fmtInt(c.cleanUsdt)} + ${c.feePct}% = ${fmtUsd(c.grossUsdt)}`;
+      if (dongBadge) dongBadge.textContent = `${fmtInt(c.cleanUsdt)} × ${fmtInt(c.dongRate)} = ${fmtInt(c.dongReceived)} ₫`;
     });
 
     document.getElementById('dailyEntryForm').addEventListener('submit', (e) => {
       e.preventDefault();
-      const site = state.sites.find((s) => s.id === state.activeSiteId);
+      const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
       if (!site) return;
       const m = ensureMonthData(site, getMonthKey());
-
-      const cleanedAgents = modalAgentsDraft.map((ag, i) => ({
-        name: (ag.name || '').trim() || `Agen ${i + 1}`,
-        usdtTopup: Math.max(0, parseNum(ag.usdtTopup)),
-        trxFeeUsdt: Math.max(0, parseNum(ag.trxFeeUsdt)),
-        feeType: ag.feeType || 'percent',
-        feeValue: Math.max(0, parseNum(ag.feeValue)),
-        dongFeeMode: ag.dongFeeMode || 'deduct',
-        dongRate: Math.max(0, parseNum(ag.dongRate))
-      }));
-
       m.days[modalEditingDate] = {
-        agents: cleanedAgents,
-        spendDong: Math.max(0, parseNum(document.getElementById('modalSpendDong').value)),
-        registCount: Math.max(0, parseNum(document.getElementById('modalRegistCount').value)),
-        dpCount: Math.max(0, parseNum(document.getElementById('modalDpCount').value)),
-        lockCount: Math.max(0, parseNum(document.getElementById('modalLockCount').value)),
-        dpAmountIdr: Math.max(0, parseNum(document.getElementById('modalDpAmountIdr').value))
+        agents: modalDraftAgents.map((ag, i) => ({
+          name: ag.name.trim() || `Agen ${i + 1}`,
+          topupUsdt: ag.topupUsdt,
+          feePercent: ag.feePercent,
+          trxFeeUsdt: ag.trxFeeUsdt,
+          dongRate: ag.dongRate
+        })),
+        spendDong: document.getElementById('modalSpendDong').value.trim(),
+        registCount: document.getElementById('modalRegistCount').value.trim(),
+        dpCount: document.getElementById('modalDpCount').value.trim(),
+        lockCount: document.getElementById('modalLockCount').value.trim(),
+        dpAmountIdr: document.getElementById('modalDpAmountIdr').value.trim()
       };
-
+      persistState();
       document.getElementById('dailyModal').classList.add('hidden');
+      renderAll();
+      showToast('Data harian berhasil disimpan');
+    });
+
+    ['purchaseUsdtGross', 'purchaseIdrTotal'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', updatePurchaseLivePreview);
+    });
+
+    document.getElementById('usdtPurchaseForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
+      if (!site) return;
+      const date = document.getElementById('purchaseDate').value || `${getMonthKey()}-01`;
+      const source = document.getElementById('purchaseSource').value.trim();
+      const usdtGross = parseNum(document.getElementById('purchaseUsdtGross').value);
+      const idrTotal = parseNum(document.getElementById('purchaseIdrTotal').value);
+      if (usdtGross <= 0 || idrTotal <= 0) {
+        showToast('Isi jumlah beli USDT dan nominal IDR dengan benar', 'error');
+        return;
+      }
+      const m = ensureMonthData(site, getMonthKey());
+      m.purchases.push({
+        id: 'pur_' + Date.now(),
+        type: 'buy',
+        date,
+        source,
+        usdtGross,
+        idrTotal
+      });
+      document.getElementById('purchaseSource').value = '';
+      document.getElementById('purchaseUsdtGross').value = '';
+      document.getElementById('purchaseIdrTotal').value = '';
+      updatePurchaseLivePreview();
       persistState();
       renderAll();
-      showToast(`Data ${formatDisplayDate(modalEditingDate)} disimpan`);
+      showToast('Pembelian USDT dicatat');
+    });
+
+    document.getElementById('standaloneTrxForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const site = state.sites.find((s) => s.id === state.activeSiteId) || state.sites[0];
+      if (!site) return;
+      const date = document.getElementById('trxStandaloneDate').value || `${getMonthKey()}-01`;
+      const note = document.getElementById('trxStandaloneNote').value.trim();
+      const trxFeeUsdt = parseNum(document.getElementById('trxStandaloneAmount').value);
+      if (trxFeeUsdt <= 0) {
+        showToast('Masukkan nominal Fee TRX yang valid', 'error');
+        return;
+      }
+      const m = ensureMonthData(site, getMonthKey());
+      m.purchases.push({
+        id: 'trx_' + Date.now(),
+        type: 'trx_only',
+        date,
+        note,
+        trxFeeUsdt
+      });
+      document.getElementById('trxStandaloneNote').value = '';
+      document.getElementById('trxStandaloneAmount').value = '';
+      document.getElementById('standaloneTrxModal').classList.add('hidden');
+      persistState();
+      renderAll();
+      showToast('Fee TRX dicatat');
     });
 
     document.getElementById('addUserAccountForm').addEventListener('submit', (e) => {
@@ -1894,25 +1768,25 @@
       const p = document.getElementById('newAccountPassword').value.trim();
       if (!u || !p) return;
       if (state.accounts.some((a) => a.username.toLowerCase() === u.toLowerCase())) {
-        showToast('Username sudah dipakai', 'error');
+        showToast('Username sudah terdaftar', 'error');
         return;
       }
-      state.accounts.push({ username: u, password: p, role: 'Tim' });
+      state.accounts.push({ username: u, password: p });
       document.getElementById('newAccountUsername').value = '';
       document.getElementById('newAccountPassword').value = '';
       persistState();
       renderAccountUsersList();
-      showToast(`Akun ${u} berhasil ditambahkan`);
+      showToast(`Akun ${u} ditambahkan`);
     });
 
     document.getElementById('inputRestoreJson').addEventListener('change', (e) => {
-      const file = e.target.files?.[0];
+      const file = e.target.files && e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
         try {
           const parsed = JSON.parse(String(reader.result));
-          if (parsed && Array.isArray(parsed.sites)) {
+          if (parsed && Array.isArray(parsed.sites) && parsed.sites.length > 0) {
             state = parsed;
             persistState();
             renderAll();
@@ -1928,11 +1802,10 @@
       e.target.value = '';
     });
 
-    // Global Click Delegation
     document.addEventListener('click', async (e) => {
       const target = e.target;
 
-      // Select site or global recap
+      // Select Site Tab
       const siteBtn = target.closest('[data-select-site]');
       if (siteBtn) {
         state.activeSiteId = siteBtn.getAttribute('data-select-site');
@@ -1941,24 +1814,24 @@
         return;
       }
 
-      // Select subtab
+      // Select Subtab
       const subBtn = target.closest('[data-subtab]');
       if (subBtn) {
-        state.activeSubTab = subBtn.getAttribute('data-subtab');
+        state.activeSubtab = subBtn.getAttribute('data-subtab');
         persistState();
         renderAll();
         return;
       }
 
-      // Open daily modal
+      // Open Daily Modal
       if (target.closest('#btnOpenDailyModal')) {
         openDailyModal(`${getMonthKey()}-01`);
         return;
       }
 
-      const editDayBtn = target.closest('[data-edit-day]');
-      if (editDayBtn) {
-        openDailyModal(editDayBtn.getAttribute('data-edit-day'));
+      const openDayBtn = target.closest('[data-open-day-modal]');
+      if (openDayBtn) {
+        openDailyModal(openDayBtn.getAttribute('data-open-day-modal'));
         return;
       }
 
@@ -1967,14 +1840,13 @@
         return;
       }
 
-      // Add / Remove Agent inside modal
+      // Add / Remove Agent Card
       if (target.closest('#btnAddAgentCard')) {
-        modalAgentsDraft.push({
-          name: `Agen ${modalAgentsDraft.length + 1}`,
-          usdtTopup: '',
+        modalDraftAgents.push({
+          name: `Agen ${modalDraftAgents.length + 1}`,
+          topupUsdt: '',
+          feePercent: '',
           trxFeeUsdt: '',
-          feeType: 'percent',
-          feeValue: '',
           dongRate: ''
         });
         renderModalAgentCards();
@@ -1984,74 +1856,9 @@
       const remAgBtn = target.closest('[data-remove-agent]');
       if (remAgBtn) {
         const idx = parseInt(remAgBtn.getAttribute('data-remove-agent'), 10);
-        modalAgentsDraft.splice(idx, 1);
-        renderModalAgentCards();
-        return;
-      }
-
-      // Quick TRX inside modal
-      const qTrxAg = target.closest('[data-ag-quick-trx]');
-      if (qTrxAg) {
-        const [idxStr, valStr] = qTrxAg.getAttribute('data-ag-quick-trx').split(':');
-        modalAgentsDraft[parseInt(idxStr, 10)].trxFeeUsdt = parseFloat(valStr);
-        renderModalAgentCards();
-        return;
-      }
-
-      // Preset Fee & Rate inside modal
-      const pFeeBtn = target.closest('[data-ag-preset-fee]');
-      if (pFeeBtn) {
-        const [idxStr, valStr] = pFeeBtn.getAttribute('data-ag-preset-fee').split(':');
-        modalAgentsDraft[parseInt(idxStr, 10)].feeValue = parseFloat(valStr);
-        renderModalAgentCards();
-        return;
-      }
-
-      const pRateBtn = target.closest('[data-ag-preset-rate]');
-      if (pRateBtn) {
-        const [idxStr, valStr] = pRateBtn.getAttribute('data-ag-preset-rate').split(':');
-        modalAgentsDraft[parseInt(idxStr, 10)].dongRate = parseFloat(valStr);
-        renderModalAgentCards();
-        return;
-      }
-
-      const addPresetFeeBtn = target.closest('[data-add-preset-fee]');
-      if (addPresetFeeBtn) {
-        const fType = addPresetFeeBtn.getAttribute('data-add-preset-fee');
-        const res = await openCustomDialog({
-          title: 'Tambah Preset Fee Agen',
-          message: 'Masukkan angka nominal preset fee baru:',
-          showInput: true,
-          confirmText: 'Simpan Preset'
-        });
-        if (res !== null) {
-          const num = parseNum(res);
-          const listKey = fType === 'dong' ? 'feeDongs' : (fType === 'usdt' ? 'feeUsdts' : 'feePercents');
-          if (!state.customPresets[listKey].includes(num)) {
-            state.customPresets[listKey].push(num);
-            state.customPresets[listKey].sort((a, b) => a - b);
-            persistState();
-            renderModalAgentCards();
-          }
-        }
-        return;
-      }
-
-      if (target.closest('[data-add-preset-rate]')) {
-        const res = await openCustomDialog({
-          title: 'Tambah Preset Kurs Dong',
-          message: 'Masukkan angka kurs Dong baru (contoh: 25600):',
-          showInput: true,
-          confirmText: 'Simpan Kurs'
-        });
-        if (res !== null) {
-          const num = parseNum(res);
-          if (num > 0 && !state.customPresets.dongRates.includes(num)) {
-            state.customPresets.dongRates.push(num);
-            state.customPresets.dongRates.sort((a, b) => a - b);
-            persistState();
-            renderModalAgentCards();
-          }
+        if (modalDraftAgents.length > 1) {
+          modalDraftAgents.splice(idx, 1);
+          renderModalAgentCards();
         }
         return;
       }
@@ -2077,7 +1884,7 @@
         return;
       }
 
-      // Quick Purchase TRX
+      // Delete Purchase / TRX
       const delPurBtn = target.closest('[data-delete-purchase]');
       if (delPurBtn) {
         const purId = delPurBtn.getAttribute('data-delete-purchase');
@@ -2157,7 +1964,7 @@
         return;
       }
 
-      // Add / Rename Site
+      // Add / Rename / Delete Site
       if (target.closest('#btnAddSite')) {
         const name = await openCustomDialog({
           title: 'Tambah Site Baru',
@@ -2195,6 +2002,29 @@
         return;
       }
 
+      if (target.closest('#btnDeleteSite')) {
+        if (state.sites.length <= 1) {
+          showToast('Minimal harus ada 1 site aktif', 'error');
+          return;
+        }
+        const site = state.sites.find((s) => s.id === state.activeSiteId);
+        if (!site) return;
+        const ok = await openCustomDialog({
+          title: 'Hapus Site',
+          message: `Yakin ingin menghapus site "${site.name}" beserta seluruh datanya?`,
+          confirmText: 'Ya, Hapus Site'
+        });
+        if (ok) {
+          const deletedName = site.name;
+          state.sites = state.sites.filter((s) => s.id !== site.id);
+          state.activeSiteId = state.sites[0].id;
+          persistState();
+          renderAll();
+          showToast(`Site ${deletedName} berhasil dihapus`);
+        }
+        return;
+      }
+
       // Clear Demo Data
       if (target.closest('#btnClearDemo')) {
         const ok = await openCustomDialog({
@@ -2217,22 +2047,21 @@
         const monthKey = getMonthKey();
         const m = ensureMonthData(site, monthKey);
         const metrics = computeSiteMonthMetrics(site, monthKey);
-        const lines = [['Tanggal', 'Site', 'Topup_Bersih_USDT', 'Fee_Agen_USDT', 'Topup_Kotor_USDT', 'Fee_TRX', 'Dong_Diterima', 'Spend_Dong', 'Modal_Spend_IDR', 'Regist', 'DP', 'Lock', 'TTL_DP_IDR']];
+        const lines = [['Tanggal', 'Site', 'Total_USDT', 'Topup_Bersih_USDT', 'Fee_Agen_USDT', 'Fee_TRX', 'Modal_Spend_IDR', 'Regist', 'DP', 'Lock', 'TTL_DP_IDR', 'Cost_Per_DP']];
         Object.keys(m.days).sort().forEach((dKey) => {
           const day = m.days[dKey];
-          let clean = 0, feeAg = 0, gross = 0, trx = 0, dIn = 0;
+          let clean = 0, feeAg = 0, trx = 0, totalUsdt = 0;
           (day.agents || []).forEach((ag) => {
             const c = computeAgentTopup(ag);
             clean += c.cleanUsdt;
             feeAg += c.agentFeeUsdt;
-            gross += c.grossUsdt;
             trx += c.trxFee;
-            dIn += c.dongReceived;
+            totalUsdt += c.totalAllUsdt;
           });
-          const sp = parseNum(day.spendDong);
-          const manSpend = parseNum(day.manualSpendIdr);
-          const modalIdr = manSpend > 0 ? manSpend : Math.round(sp * metrics.effectiveIdrPerDong);
-          lines.push([dKey, site.name, clean, feeAg, gross, trx, Math.round(dIn), sp, modalIdr, parseNum(day.registCount), parseNum(day.dpCount), parseNum(day.lockCount), parseNum(day.dpAmountIdr)]);
+          const modalIdr = Math.round(totalUsdt * metrics.avgUsdtRateIdr);
+          const reg = parseNum(day.registCount);
+          const costPerDp = reg > 0 ? Math.round(modalIdr / reg) : 0;
+          lines.push([dKey, site.name, totalUsdt, clean, feeAg, trx, modalIdr, reg, parseNum(day.dpCount), parseNum(day.lockCount), parseNum(day.dpAmountIdr), costPerDp]);
         });
         const blob = new Blob([lines.map((r) => r.join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
